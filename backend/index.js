@@ -121,6 +121,7 @@ async function fetchBasicPlaylistTracks(url) {
             id: item.track.id,
             name: item.track.name,
             artist: item.track.artists.map((a) => a.name).join(", "),
+            album_cover: item.track.album.images[0].url,
           };
         })
         .filter(Boolean)
@@ -160,17 +161,11 @@ app.get("/playlist", async (req, res) => {
  * It selects a random track from the basic track list and tries to get a preview.
  * If the chosen track has no preview, it iterates through the list until one is found.
  */
-app.get("/target", async (req, res) => {
+app.post("/target", async (req, res) => {
   try {
-    const { url } = req.query;
-    if (!url) {
-      return res.status(400).json({ error: "Missing playlist URL" });
-    }
-    logger.info(`Selecting target track from playlist: ${url}`);
-    const tracks = await fetchBasicPlaylistTracks(url);
-    if (!tracks.length) {
-      logger.warn("No tracks found in playlist for target selection.");
-      return res.status(404).json({ error: "No tracks available." });
+    const tracks = req.body.tracks;
+    if (!tracks || !Array.isArray(tracks) || tracks.length === 0) {
+      return res.status(400).json({ error: "No tracks provided." });
     }
     // Shuffle the tracks randomly.
     const shuffledTracks = tracks.sort(() => Math.random() - 0.5);
@@ -195,10 +190,12 @@ app.get("/target", async (req, res) => {
   }
 });
 
+
 /**
  * POST /guess
  * Checks a user's guess for a song against the actual song.
  */
+// In your server file (e.g., server.js)
 app.post("/guess", async (req, res) => {
   try {
     const { songId, guess } = req.body;
@@ -213,8 +210,15 @@ app.post("/guess", async (req, res) => {
     const userGuess = guess.toLowerCase();
     const isCorrect = actualSongName === userGuess;
     if (isCorrect) {
+      // Build an object with song details, including album cover.
+      const songInfo = {
+        name: response.data.name,
+        artist: response.data.artists.map((a) => a.name).join(", "),
+        album_cover: response.data.album.images[0].url,
+      };
       res.json({
         correct: true,
+        song: songInfo,
       });
     } else {
       res.json({
@@ -226,6 +230,7 @@ app.post("/guess", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {

@@ -1,3 +1,4 @@
+// App.jsx
 import React, { useState, useRef, useCallback } from 'react';
 import axios from 'axios';
 
@@ -13,6 +14,8 @@ function App() {
   const [attempt, setAttempt] = useState(0);
   const [correctGuess, setCorrectGuess] = useState(false);
   const [history, setHistory] = useState([]);
+  // New state for storing correct song details (album cover, etc.)
+  const [correctSong, setCorrectSong] = useState(null);
   const maxAttempts = 5;
 
   const audioRef = useRef(null);
@@ -73,8 +76,10 @@ function App() {
       return;
     }
     try {
-      // Reset history when starting a new game.
+      // Reset history and correct song when starting a new game.
       setHistory([]);
+      setCorrectSong(null);
+      setFeedback('');
       
       // Fetch basic track info for suggestions.
       const playlistResponse = await axios.get('/playlist', {
@@ -86,18 +91,16 @@ function App() {
         return;
       }
       setRecommendedSongs(tracks);
-
-      // Get the target track (with preview) for the game.
-      const targetResponse = await axios.get('/target', {
-        params: { url: playlistUrl },
-      });
+  
+      // Now POST the tracks to /target to get the target track.
+      const targetResponse = await axios.post('/target', { tracks });
       const targetTrack = targetResponse.data.track;
       if (!targetTrack) {
         setFeedback("Could not find a track with a preview available. Please try another playlist.");
         return;
       }
       setSongData(targetTrack);
-
+  
       // Initialize game state.
       setGameStarted(true);
       setSnippetDuration(1);
@@ -105,7 +108,7 @@ function App() {
       setFeedback('');
       setGuess('');
       setCorrectGuess(false);
-
+  
       if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current.currentTime = 0;
@@ -116,6 +119,7 @@ function App() {
       setFeedback('Error starting game. Please check the playlist URL.');
     }
   };
+  
 
   // Handle the user's guess.
   const handleGuess = async (e) => {
@@ -132,8 +136,10 @@ function App() {
         { attempt: attempt + 1, type: 'guess', value: guess, correct: data.correct }
       ]);
       if (data.correct) {
-        setFeedback(`Correct! The song was "${songData.name}" by ${songData.artist}.`);
+        setFeedback(`Correct!`);
         setCorrectGuess(true);
+        // Save the correct song info returned from the backend.
+        setCorrectSong(data.song);
       } else {
         setFeedback(`Incorrect guess. Try again!`);
         incrementGuess();
@@ -156,8 +162,10 @@ function App() {
     if (attempt + 1 < maxAttempts) {
       playSnippet(snippetDuration * 2);
     } else {
+      // When the user runs out of attempts, show the correct song info.
       setFeedback(`Game over! The correct song was "${songData.name}" by ${songData.artist}.`);
       setCorrectGuess(true);
+      setCorrectSong(songData);
     }
   };
 
@@ -174,11 +182,10 @@ function App() {
   // Updated nextSong: fetch a new target track with a preview from the backend and reset history.
   const nextSong = async () => {
     try {
-      // Reset history for the new song.
+      // Reset history and correct song for the new song.
       setHistory([]);
-      const targetResponse = await axios.get('/target', {
-        params: { url: playlistUrl },
-      });
+      setCorrectSong(null);
+      const targetResponse = await axios.post('/target', { tracks: recommendedSongs });
       const targetTrack = targetResponse.data.track;
       if (!targetTrack) {
         setFeedback("Could not find a track with a preview available. Please try another playlist.");
@@ -203,6 +210,7 @@ function App() {
       setFeedback("Error starting next song.");
     }
   };
+  
 
   // Filter recommended songs for suggestions.
   const filteredSongs = guess
@@ -306,13 +314,23 @@ function App() {
                 </div>
               )}
               {feedback && <p className="mt-2 text-red-300">{feedback}</p>}
-              {correctGuess && (
-                <button
-                  onClick={nextSong}
-                  className="py-2 px-4 text-base mt-2 bg-gray-600 text-white rounded hover:bg-gray-500"
-                >
-                  Next Song
-                </button>
+              {/* Display correct song info when guessed correctly or out of attempts */}
+              {correctGuess && correctSong && (
+                <div className="mt-4">
+                  <img
+                    src={correctSong.album_cover}
+                    alt={correctSong.name}
+                    className="w-32 h-32 mx-auto mb-2 rounded"
+                  />
+                  <p className="text-lg font-bold">{correctSong.name}</p>
+                  <p className="text-md">{correctSong.artist}</p>
+                  <button
+                    onClick={nextSong}
+                    className="py-2 px-4 text-base mt-2 bg-gray-600 text-white rounded hover:bg-gray-500"
+                  >
+                    Next Song
+                  </button>
+                </div>
               )}
             </div>
           )}
