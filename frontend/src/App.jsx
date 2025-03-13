@@ -1,5 +1,4 @@
-// App.jsx
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import axios from 'axios';
 
 function App() {
@@ -14,13 +13,24 @@ function App() {
   const [attempt, setAttempt] = useState(0);
   const [correctGuess, setCorrectGuess] = useState(false);
   const [history, setHistory] = useState([]);
-  // New state for storing correct song details (album cover, etc.)
   const [correctSong, setCorrectSong] = useState(null);
+  const [, forceUpdate] = useState();
   const maxAttempts = 5;
 
+  // Refs
   const audioRef = useRef(null);
   const progressBarRef = useRef(null);
   const progressAnimationFrameRef = useRef(null);
+  const fullProgressBarRef = useRef(null);
+  const fullProgressAnimationRef = useRef(null);
+
+  // Cleanup animations on unmount
+  useEffect(() => {
+    return () => {
+      cancelAnimationFrame(progressAnimationFrameRef.current);
+      cancelAnimationFrame(fullProgressAnimationRef.current);
+    };
+  }, []);
 
   const clearProgressAnimation = () => {
     if (progressAnimationFrameRef.current) {
@@ -29,30 +39,24 @@ function App() {
     }
   };
 
-  // Play the audio snippet and update the progress bar.
   const playSnippet = useCallback((duration) => {
     if (audioRef.current && progressBarRef.current) {
       clearProgressAnimation();
-
-      // Temporarily disable transition so the progress resets instantly.
+      
+      // Reset progress bar
       progressBarRef.current.style.transition = 'none';
       progressBarRef.current.style.width = '0%';
       progressBarRef.current.offsetWidth; // Force reflow
-      // Re-enable the transition.
       progressBarRef.current.style.transition = 'width 0.05s linear';
 
-      // Reset audio.
+      // Reset audio
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
 
-      // Start playback.
-      audioRef.current.play().catch((error) => {
-        console.error('Playback error:', error);
-        setFeedback('Error playing audio.');
-      });
+      // Start playback
+      audioRef.current.play().catch(console.error);
       const startTime = Date.now();
 
-      // Update the progress bar until the snippet duration has elapsed.
       const updateProgress = () => {
         const elapsed = (Date.now() - startTime) / 1000;
         const percent = Math.min(100, (elapsed / duration) * 100);
@@ -69,46 +73,51 @@ function App() {
     }
   }, []);
 
-  // Start game: fetch basic playlist info and then get the target track with a preview.
+  const updateFullProgress = useCallback(() => {
+    if (audioRef.current && fullProgressBarRef.current) {
+      const progress = (audioRef.current.currentTime / audioRef.current.duration) * 100;
+      fullProgressBarRef.current.style.width = `${progress}%`;
+      fullProgressAnimationRef.current = requestAnimationFrame(updateFullProgress);
+    }
+  }, []);
+
   const startGame = async () => {
     if (!playlistUrl) {
       setFeedback('Please enter a playlist URL.');
       return;
     }
+    
     try {
-      // Reset history and correct song when starting a new game.
       setHistory([]);
       setCorrectSong(null);
       setFeedback('');
-      
-      // Fetch basic track info for suggestions.
+
       const playlistResponse = await axios.get('/playlist', {
         params: { url: playlistUrl },
       });
       const tracks = playlistResponse.data.tracks || [];
+      
       if (!tracks.length) {
         setFeedback('No tracks found in the playlist.');
         return;
       }
+
       setRecommendedSongs(tracks);
-  
-      // Now POST the tracks to /target to get the target track.
       const targetResponse = await axios.post('/target', { tracks });
       const targetTrack = targetResponse.data.track;
+
       if (!targetTrack) {
-        setFeedback("Could not find a track with a preview available. Please try another playlist.");
+        setFeedback("Could not find a track with a preview. Try another playlist.");
         return;
       }
+
       setSongData(targetTrack);
-  
-      // Initialize game state.
       setGameStarted(true);
       setSnippetDuration(1);
       setAttempt(0);
-      setFeedback('');
       setGuess('');
       setCorrectGuess(false);
-  
+
       if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current.currentTime = 0;
@@ -116,32 +125,33 @@ function App() {
       playSnippet(1);
     } catch (error) {
       console.error(error);
-      setFeedback('Error starting game. Please check the playlist URL.');
+      setFeedback('Error starting game. Check the playlist URL.');
     }
   };
-  
 
-  // Handle the user's guess.
   const handleGuess = async (e) => {
     e.preventDefault();
     if (!songData || !guess) return;
+
     try {
       const { data } = await axios.post('/guess', {
         songId: songData.id,
         guess,
       });
-      // Record the guess attempt.
-      setHistory(prev => [
-        ...prev,
-        { attempt: attempt + 1, type: 'guess', value: guess, correct: data.correct }
-      ]);
+
+      setHistory(prev => [...prev, {
+        attempt: attempt + 1,
+        type: 'guess',
+        value: guess,
+        correct: data.correct
+      }]);
+
       if (data.correct) {
-        setFeedback(`Correct!`);
+        setFeedback('Correct!');
         setCorrectGuess(true);
-        // Save the correct song info returned from the backend.
         setCorrectSong(data.song);
       } else {
-        setFeedback(`Incorrect guess. Try again!`);
+        setFeedback('Incorrect. Try again!');
         incrementGuess();
       }
     } catch (error) {
@@ -150,192 +160,281 @@ function App() {
     }
   };
 
-  // Update the guess input when a suggestion is clicked.
-  const handleSuggestionClick = (songName) => {
-    setGuess(songName);
-  };
-
-  // Increment guess count and increase the snippet duration.
   const incrementGuess = () => {
     setSnippetDuration(prev => prev * 2);
     setAttempt(prev => prev + 1);
+    
     if (attempt + 1 < maxAttempts) {
       playSnippet(snippetDuration * 2);
     } else {
-      // When the user runs out of attempts, show the correct song info.
-      setFeedback(`Game over! The correct song was "${songData.name}" by ${songData.artist}.`);
+      setFeedback(`Game over! The song was "${songData.name}" by ${songData.artist}.`);
       setCorrectGuess(true);
       setCorrectSong(songData);
     }
   };
 
-  // Handle skip action: record the skip in history and then increment.
   const handleSkip = () => {
-    setHistory(prev => [
-      ...prev,
-      { attempt: attempt + 1, type: 'skip', value: 'Skipped' }
-    ]);
+    setHistory(prev => [...prev, {
+      attempt: attempt + 1,
+      type: 'skip',
+      value: 'Skipped'
+    }]);
     setFeedback('');
     incrementGuess();
   };
 
-  // Updated nextSong: fetch a new target track with a preview from the backend and reset history.
+  const handleSuggestionClick = (songName) => {
+    setGuess(songName);
+    // Force close the dropdown by filtering the suggestions
+    forceUpdate({}); // Not strictly necessary, but ensures a re-render
+  };
+
   const nextSong = async () => {
     try {
-      // Reset history and correct song for the new song.
       setHistory([]);
       setCorrectSong(null);
       const targetResponse = await axios.post('/target', { tracks: recommendedSongs });
       const targetTrack = targetResponse.data.track;
+
       if (!targetTrack) {
-        setFeedback("Could not find a track with a preview available. Please try another playlist.");
+        setFeedback("No tracks with previews available.");
         return;
       }
+
       setSongData(targetTrack);
       setSnippetDuration(1);
       setAttempt(0);
       setFeedback('');
       setGuess('');
       setCorrectGuess(false);
+
       if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current.currentTime = 0;
       }
-      if (progressBarRef.current) {
-        progressBarRef.current.style.width = '0%';
-      }
       playSnippet(1);
     } catch (error) {
       console.error(error);
-      setFeedback("Error starting next song.");
+      setFeedback("Error loading next song.");
     }
   };
-  
 
-  // Filter recommended songs for suggestions.
   const filteredSongs = guess
-    ? recommendedSongs.filter(
-        (song) =>
-          song.name.toLowerCase().includes(guess.toLowerCase()) &&
-          song.name.toLowerCase() !== guess.toLowerCase()
+    ? recommendedSongs.filter(song =>
+        song.name.toLowerCase().includes(guess.toLowerCase()) &&
+        song.name.toLowerCase() !== guess.toLowerCase()
       )
     : [];
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white p-5">
-      <h1 className="text-3xl font-bold mb-5">Song Guessing Game</h1>
-      {!gameStarted ? (
-        <div className="text-center">
-          <input
-            type="text"
-            placeholder="Enter Spotify Playlist URL"
-            value={playlistUrl}
-            onChange={(e) => setPlaylistUrl(e.target.value)}
-            className="w-[400px] p-2 border border-gray-500 rounded bg-gray-700 text-white"
-          />
-          <button
-            onClick={startGame}
-            className="ml-2 py-2 px-4 bg-gray-600 text-white rounded hover:bg-gray-500"
-          >
-            Start Game
-          </button>
-          {feedback && <p className="mt-2 text-red-300">{feedback}</p>}
-        </div>
-      ) : (
-        <>
-          {!songData ? (
-            <div className="text-center">
-              <p>Loading track...</p>
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 flex items-center justify-center p-4">
+      <div className="w-full max-w-lg bg-slate-800 rounded-2xl shadow-xl p-6">
+        <h1 className="text-3xl font-bold text-center mb-8 text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-400">
+          Trackdle
+        </h1>
+
+        {!gameStarted ? (
+          <div className="space-y-6">
+            <div className="space-y-4">
+              <input
+                type="text"
+                placeholder="Enter Spotify playlist URL..."
+                value={playlistUrl}
+                onChange={(e) => setPlaylistUrl(e.target.value)}
+                className="w-full px-4 py-3 rounded-lg bg-slate-700 border border-slate-600 focus:border-amber-400 focus:ring-2 focus:ring-amber-400/30 text-white placeholder-slate-400 transition-all"
+              />
+              <button
+                onClick={startGame}
+                className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-slate-900 font-semibold rounded-lg transition-colors"
+              >
+                Start Game
+              </button>
             </div>
-          ) : (
-            <div className="w-full text-center">
-              {!correctGuess && (
-                <div className="mb-4">
-                  <h2 className="text-2xl mb-2">Guess the Song</h2>
-                  {/* History Display */}
-                  {history.length > 0 && (
-                    <div className="mb-2 text-left w-[300px] mx-auto">
-                      {history.map((entry) => (
-                        <p key={entry.attempt} className="text-sm">
-                          Attempt {entry.attempt}: {entry.type === 'skip' ? 'Skipped' : entry.value}
-                        </p>
-                      ))}
+            {feedback && <p className="text-red-400 text-sm">{feedback}</p>}
+          </div>
+        ) : (
+          <>
+            {!songData ? (
+              <div className="text-center py-8 text-slate-400">Loading track...</div>
+            ) : (
+              <div className="space-y-6">
+                {!correctGuess && (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="text-slate-400 text-sm">
+                        Attempt {attempt + 1} of {maxAttempts}
+                      </div>
+                      <button
+                        onClick={() => playSnippet(snippetDuration)}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-slate-700 rounded-md text-slate-300 hover:bg-slate-600 transition-colors"
+                      >
+                        <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
+                          <path d="M8 5v14l11-7z"/>
+                        </svg>
+                        Play {snippetDuration}s
+                      </button>
                     </div>
-                  )}
-                  <audio ref={audioRef} src={songData.preview_url} preload="auto" />
-                  <div className="w-[300px] h-2 bg-gray-600 rounded my-2 overflow-hidden mx-auto">
-                    <div
-                      ref={progressBarRef}
-                      className="h-full bg-yellow-400 rounded transition-all duration-75"
-                    />
-                  </div>
-                  <div className="my-2 flex justify-center gap-2">
-                    <button
-                      onClick={() => playSnippet(snippetDuration)}
-                      className="py-2 px-4 bg-gray-600 text-white rounded hover:bg-gray-500"
-                    >
-                      Play {snippetDuration} second snippet
-                    </button>
-                    <button
-                      onClick={handleSkip}
-                      className="py-2 px-4 bg-gray-600 text-white rounded hover:bg-gray-500"
-                    >
-                      Skip
-                    </button>
-                  </div>
-                  <form onSubmit={handleGuess} className="relative w-[300px] mx-auto">
-                    <input
-                      type="text"
-                      placeholder="Enter your guess"
-                      value={guess}
-                      onChange={(e) => setGuess(e.target.value)}
-                      className="w-full p-2 text-base bg-gray-700 text-white border border-gray-500 rounded"
-                    />
-                    {filteredSongs.length > 0 && (
-                      <ul className="absolute top-[45px] left-0 right-0 border border-gray-500 bg-gray-700 list-none m-0 p-1 max-h-[150px] overflow-y-auto z-10">
-                        {filteredSongs.map((song) => (
-                          <li
-                            key={song.id}
-                            onClick={() => handleSuggestionClick(song.name)}
-                            className="p-1 cursor-pointer text-white hover:bg-gray-600"
-                          >
-                            {song.name} - {song.artist}
-                          </li>
-                        ))}
-                      </ul>
+
+                    <audio ref={audioRef} src={songData.preview_url} preload="auto" />
+
+                    <div className="h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                      <div
+                        ref={progressBarRef}
+                        className="h-full bg-amber-400 rounded-full transition-all duration-75"
+                      />
+                    </div>
+
+                    <form onSubmit={handleGuess} className="relative">
+                      <input
+                        type="text"
+                        placeholder="Guess the song..."
+                        value={guess}
+                        onChange={(e) => setGuess(e.target.value)}
+                        className="w-full px-4 py-3 rounded-lg bg-slate-700 border border-slate-600 focus:border-amber-400 focus:ring-2 focus:ring-amber-400/30 text-white placeholder-slate-400 transition-all"
+                      />
+                      {filteredSongs.length > 0 && (
+                        <ul className="absolute z-10 w-full mt-2 bg-slate-700 rounded-lg overflow-hidden shadow-lg">
+                          {filteredSongs.map((song) => (
+                            <li
+                              key={song.id}
+                              onClick={() => handleSuggestionClick(song.name)}
+                              className="px-4 py-2 cursor-pointer hover:bg-slate-600 transition-colors border-t border-slate-600 first:border-t-0"
+                            >
+                              <div className="text-white">{song.name}</div>
+                              <div className="text-sm text-slate-400">{song.artist}</div>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </form>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        onClick={handleSkip}
+                        className="py-2.5 px-4 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg transition-colors"
+                      >
+                        Skip
+                      </button>
+                      <button
+                        type="submit"
+                        onClick={handleGuess}
+                        className="py-2.5 px-4 bg-amber-500 hover:bg-amber-400 text-slate-900 rounded-lg transition-colors"
+                      >
+                        Submit
+                      </button>
+                    </div>
+
+                    {history.length > 0 && (
+                      <div className="bg-slate-700/50 p-4 rounded-lg">
+                        <h3 className="text-sm text-slate-400 mb-2">Previous guesses:</h3>
+                        <div className="space-y-2">
+                          {history.map((entry) => (
+                            <div 
+                              key={entry.attempt}
+                              className="flex items-center justify-between px-3 py-2 bg-slate-800 rounded-md"
+                            >
+                              <span className="text-sm text-slate-300">
+                                {entry.type === 'skip' ? 'Skipped' : entry.value}
+                              </span>
+                              <span className="text-xs text-slate-500">
+                                Attempt {entry.attempt}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     )}
+                  </div>
+                )}
+
+                {feedback && (
+                  <div className={`p-3 rounded-lg text-sm ${
+                    feedback.includes('Correct') 
+                      ? 'bg-green-500/10 text-green-400' 
+                      : 'bg-red-500/10 text-red-400'
+                  }`}>
+                    {feedback}
+                  </div>
+                )}
+
+                {correctGuess && correctSong && (
+                  <div className="text-center space-y-6">
+                    <div className="inline-block">
+                      <img
+                        src={correctSong.album_cover}
+                        alt={correctSong.name}
+                        className="w-48 h-48 rounded-xl object-cover mx-auto shadow-lg border border-slate-600"
+                      />
+                      <div className="mt-4 space-y-1">
+                        <h2 className="text-xl font-semibold text-white">{correctSong.name}</h2>
+                        <p className="text-slate-400">{correctSong.artist}</p>
+                      </div>
+                    </div>
+                    
+                    <div className="bg-slate-700 p-4 rounded-lg space-y-4">
+                      <div className="flex items-center justify-center gap-4">
+                        <button
+                          onClick={() => {
+                            if (audioRef.current.paused) {
+                              audioRef.current.play();
+                              fullProgressAnimationRef.current = requestAnimationFrame(updateFullProgress);
+                            } else {
+                              audioRef.current.pause();
+                              cancelAnimationFrame(fullProgressAnimationRef.current);
+                            }
+                          }}
+                          className="w-10 h-10 rounded-full bg-amber-500 hover:bg-amber-400 flex items-center justify-center transition-colors"
+                        >
+                          {audioRef.current?.paused ? (
+                            <svg className="w-5 h-5 fill-current text-slate-900" viewBox="0 0 24 24">
+                              <path d="M8 5v14l11-7z"/>
+                            </svg>
+                          ) : (
+                            <svg className="w-5 h-5 fill-current text-slate-900" viewBox="0 0 24 24">
+                              <path d="M6 4h4v16H6zm8 0h4v16h-4z"/>
+                            </svg>
+                          )}
+                        </button>
+                        <div className="flex-1 space-y-2">
+                          <div className="h-1.5 bg-slate-600 rounded-full overflow-hidden">
+                            <div 
+                              ref={fullProgressBarRef}
+                              className="h-full bg-amber-400 rounded-full transition-all duration-75"
+                              style={{ width: '0%' }}
+                            />
+                          </div>
+                          <div className="flex justify-between text-xs text-slate-400">
+                            <span>
+                              {new Date(audioRef.current?.currentTime * 1000 || 0).toISOString().substr(14, 5)}
+                            </span>
+                            <span>
+                              -{new Date((audioRef.current?.duration - audioRef.current?.currentTime) * 1000 || 0).toISOString().substr(14, 5)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <audio
+                        ref={audioRef}
+                        src={correctSong.preview_url}
+                        onTimeUpdate={() => forceUpdate({})}
+                        onEnded={() => cancelAnimationFrame(fullProgressAnimationRef.current)}
+                        className="hidden"
+                      />
+                    </div>
+
                     <button
-                      type="submit"
-                      className="py-2 px-4 text-base mt-2 bg-gray-600 text-white rounded hover:bg-gray-500"
+                      onClick={nextSong}
+                      className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-slate-900 font-semibold rounded-lg transition-colors"
                     >
-                      Submit Guess
+                      Next Song
                     </button>
-                  </form>
-                </div>
-              )}
-              {feedback && <p className="mt-2 text-red-300">{feedback}</p>}
-              {/* Display correct song info when guessed correctly or out of attempts */}
-              {correctGuess && correctSong && (
-                <div className="mt-4">
-                  <img
-                    src={correctSong.album_cover}
-                    alt={correctSong.name}
-                    className="w-32 h-32 mx-auto mb-2 rounded"
-                  />
-                  <p className="text-lg font-bold">{correctSong.name}</p>
-                  <p className="text-md">{correctSong.artist}</p>
-                  <button
-                    onClick={nextSong}
-                    className="py-2 px-4 text-base mt-2 bg-gray-600 text-white rounded hover:bg-gray-500"
-                  >
-                    Next Song
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-        </>
-      )}
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 }
