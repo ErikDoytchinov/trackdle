@@ -92,7 +92,7 @@ function App() {
       setCorrectSong(null);
       setFeedback('');
 
-      const playlistResponse = await axios.get('/playlist', {
+      const playlistResponse = await axios.get(`${import.meta.env.VITE_API_URL}/playlist`, {
         params: { url: playlistUrl },
       });
       const tracks = playlistResponse.data.tracks || [];
@@ -103,7 +103,7 @@ function App() {
       }
 
       setRecommendedSongs(tracks);
-      const targetResponse = await axios.post('/target', { tracks });
+      const targetResponse = await axios.post(`${import.meta.env.VITE_API_URL}/target`, { tracks });
       const targetTrack = targetResponse.data.track;
 
       if (!targetTrack) {
@@ -134,7 +134,7 @@ function App() {
     if (!songData || !guess) return;
 
     try {
-      const { data } = await axios.post('/guess', {
+      const { data } = await axios.post(`${import.meta.env.VITE_API_URL}/guess`, {
         songId: songData.id,
         guess,
       });
@@ -193,7 +193,7 @@ function App() {
     try {
       setHistory([]);
       setCorrectSong(null);
-      const targetResponse = await axios.post('/target', { tracks: recommendedSongs });
+      const targetResponse = await axios.post(`${import.meta.env.VITE_API_URL}/target`, { tracks: recommendedSongs });
       const targetTrack = targetResponse.data.track;
 
       if (!targetTrack) {

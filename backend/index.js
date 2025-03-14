@@ -18,6 +18,25 @@ const logger = winston.createLogger({
 
 // Setup middleware
 app.use(morgan("combined"));
+
+const cors = require('cors');
+
+const allowedOrigins = [
+  'https://trackdle.doytchinov.eu',
+  'https://www.trackdle.doytchinov.eu'
+];
+
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true
+}));
+
 app.use(express.json());
 app.use((req, res, next) => {
   logger.info(`Incoming request: ${req.method} ${req.url}`);
@@ -234,5 +253,5 @@ app.post("/guess", async (req, res) => {
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
-  logger.info(`Backend running on port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
