@@ -24,8 +24,7 @@ const cors = require('cors');
 const allowedOrigins = [
   'https://trackdle.doytchinov.eu',
   'https://www.trackdle.doytchinov.eu',
-  "https://api.deezer.com",
-  "https://api.spotify.com/*"
+  'http://localhost:5173'
 ];
 
 app.use(cors({

@@ -1,281 +1,392 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import axios from 'axios';
 
-function App() {
-  // State variables
-  const [playlistUrl, setPlaylistUrl] = useState('');
-  const [songData, setSongData] = useState(null);
-  const [recommendedSongs, setRecommendedSongs] = useState([]);
-  const [gameStarted, setGameStarted] = useState(false);
-  const [snippetDuration, setSnippetDuration] = useState(1);
-  const [guess, setGuess] = useState('');
-  const [feedback, setFeedback] = useState('');
-  const [attempt, setAttempt] = useState(0);
-  const [correctGuess, setCorrectGuess] = useState(false);
-  const [history, setHistory] = useState([]);
-  const [correctSong, setCorrectSong] = useState(null);
-  const [, forceUpdate] = useState();
-  const maxAttempts = 5;
+// Custom hook for audio progress management
+const useAudioProgress = (audioRef, progressBarRef) => {
+  const animationFrameRef = useRef(null);
 
-  // Refs
-  const audioRef = useRef(null);
-  const progressBarRef = useRef(null);
-  const progressAnimationFrameRef = useRef(null);
-  const fullProgressBarRef = useRef(null);
-  const fullProgressAnimationRef = useRef(null);
-
-  // Cleanup animations on unmount
-  useEffect(() => {
-    return () => {
-      cancelAnimationFrame(progressAnimationFrameRef.current);
-      cancelAnimationFrame(fullProgressAnimationRef.current);
-    };
+  const clearProgress = useCallback(() => {
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
   }, []);
 
-  const clearProgressAnimation = () => {
-    if (progressAnimationFrameRef.current) {
-      cancelAnimationFrame(progressAnimationFrameRef.current);
-      progressAnimationFrameRef.current = null;
+  const updateProgress = useCallback((duration) => {
+    const startTime = Date.now();
+    
+    const animate = () => {
+      const elapsed = (Date.now() - startTime) / 1000;
+      const percent = Math.min(100, (elapsed / duration) * 100);
+      
+      if (progressBarRef.current) {
+        progressBarRef.current.style.width = `${percent}%`;
+      }
+
+      if (elapsed < duration) {
+        animationFrameRef.current = requestAnimationFrame(animate);
+      } else if (audioRef.current) {
+        audioRef.current.pause();
+      }
+    };
+
+    animationFrameRef.current = requestAnimationFrame(animate);
+  }, [audioRef, progressBarRef]);
+
+  useEffect(() => {
+    return () => clearProgress();
+  }, [clearProgress]);
+
+  return { clearProgress, updateProgress };
+};
+
+// Sub-components
+const PlaylistInput = ({ state, setState, startGame }) => (
+  <div className="space-y-6">
+    <div className="space-y-4">
+      <input
+        type="text"
+        placeholder="Enter Spotify playlist URL..."
+        value={state.playlistUrl}
+        onChange={(e) => setState(prev => ({ ...prev, playlistUrl: e.target.value }))}
+        className="w-full px-4 py-3 rounded-lg bg-slate-700 border border-slate-600 focus:border-amber-400 focus:ring-2 focus:ring-amber-400/30 text-white placeholder-slate-400 transition-all"
+      />
+      <button
+        onClick={startGame}
+        className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-slate-900 font-semibold rounded-lg transition-colors"
+      >
+        Start Game
+      </button>
+    </div>
+    {state.feedback && <p className="text-red-400 text-sm">{state.feedback}</p>}
+  </div>
+);
+
+const GuessHistory = ({ history }) => (
+  <div className="bg-slate-700/50 p-4 rounded-lg">
+    <h3 className="text-sm text-slate-400 mb-2">Previous guesses:</h3>
+    <div className="space-y-2">
+      {history.map((entry) => (
+        <div 
+          key={entry.attempt}
+          className="flex items-center justify-between px-3 py-2 bg-slate-800 rounded-md"
+        >
+          <span className="text-sm text-slate-300">
+            {entry.type === 'skip' ? 'Skipped' : entry.value}
+          </span>
+          <span className="text-xs text-slate-500">
+            Attempt {entry.attempt}
+          </span>
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
+const SongPreview = ({ correctSong, audioRef, fullProgressBarRef }) => {
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  const togglePlayback = () => {
+    if (!audioRef.current) return;
+
+    if (audioRef.current.paused) {
+      audioRef.current.play();
+      setIsPlaying(true);
+    } else {
+      audioRef.current.pause();
+      setIsPlaying(false);
     }
   };
 
-  const playSnippet = useCallback((duration) => {
-    if (audioRef.current && progressBarRef.current) {
-      clearProgressAnimation();
+  return (
+    <div className="text-center space-y-6">
+      <div className="inline-block">
+        <img
+          src={correctSong.album_cover}
+          alt={correctSong.name}
+          className="w-48 h-48 rounded-xl object-cover mx-auto shadow-lg border border-slate-600"
+        />
+        <div className="mt-4 space-y-1">
+          <h2 className="text-xl font-semibold text-white">{correctSong.name}</h2>
+          <p className="text-slate-400">{correctSong.artist}</p>
+        </div>
+      </div>
       
-      // Reset progress bar
-      progressBarRef.current.style.transition = 'none';
-      progressBarRef.current.style.width = '0%';
-      progressBarRef.current.offsetWidth; // Force reflow
-      progressBarRef.current.style.transition = 'width 0.05s linear';
+      <div className="bg-slate-700 p-4 rounded-lg space-y-4">
+        <div className="flex items-center justify-center gap-4">
+          <button
+            onClick={togglePlayback}
+            className="w-10 h-10 rounded-full bg-amber-500 hover:bg-amber-400 flex items-center justify-center transition-colors"
+          >
+            {isPlaying ? (
+              <svg className="w-5 h-5 fill-current text-slate-900" viewBox="0 0 24 24">
+                <path d="M6 4h4v16H6zm8 0h4v16h-4z"/>
+              </svg>
+            ) : (
+              <svg className="w-5 h-5 fill-current text-slate-900" viewBox="0 0 24 24">
+                <path d="M8 5v14l11-7z"/>
+              </svg>
+            )}
+          </button>
+          <div className="flex-1 space-y-2">
+            <div className="h-1.5 bg-slate-600 rounded-full overflow-hidden">
+              <div 
+                ref={fullProgressBarRef}
+                className="h-full bg-amber-400 rounded-full transition-all duration-75"
+                style={{ width: '0%' }}
+              />
+            </div>
+            <div className="flex justify-between text-xs text-slate-400">
+              <span>
+                {new Date(audioRef.current?.currentTime * 1000 || 0).toISOString().substr(14, 5)}
+              </span>
+              <span>
+                -{new Date((audioRef.current?.duration - audioRef.current?.currentTime) * 1000 || 0).toISOString().substr(14, 5)}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
-      // Reset audio
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
+// Main component
+const App = () => {
+  const [state, setState] = useState({
+    playlistUrl: '',
+    songData: null,
+    recommendedSongs: [],
+    gameStarted: false,
+    snippetDuration: 1,
+    guess: '',
+    feedback: '',
+    attempt: 0,
+    correctGuess: false,
+    history: [],
+    correctSong: null,
+  });
 
-      // Start playback
-      audioRef.current.play().catch(console.error);
-      const startTime = Date.now();
+  const audioRef = useRef(null);
+  const progressBarRef = useRef(null);
+  const fullProgressBarRef = useRef(null);
+  const maxAttempts = 5;
 
-      const updateProgress = () => {
-        const elapsed = (Date.now() - startTime) / 1000;
-        const percent = Math.min(100, (elapsed / duration) * 100);
-        progressBarRef.current.style.width = `${percent}%`;
-        if (elapsed < duration) {
-          progressAnimationFrameRef.current = requestAnimationFrame(updateProgress);
-        } else {
-          progressBarRef.current.style.width = '100%';
-          audioRef.current.pause();
-        }
-      };
+  const snippetProgress = useAudioProgress(audioRef, progressBarRef);
+  const fullProgress = useAudioProgress(audioRef, fullProgressBarRef);
 
-      progressAnimationFrameRef.current = requestAnimationFrame(updateProgress);
-    }
-  }, []);
+  const playSnippet = useCallback((duration) => {
+    if (!audioRef.current || !progressBarRef.current) return;
 
-  const updateFullProgress = useCallback(() => {
-    if (audioRef.current && fullProgressBarRef.current) {
-      const progress = (audioRef.current.currentTime / audioRef.current.duration) * 100;
-      fullProgressBarRef.current.style.width = `${progress}%`;
-      fullProgressAnimationRef.current = requestAnimationFrame(updateFullProgress);
-    }
-  }, []);
+    snippetProgress.clearProgress();
+    audioRef.current.pause();
+    audioRef.current.currentTime = 0;
+
+    progressBarRef.current.style.transition = 'none';
+    progressBarRef.current.style.width = '0%';
+    progressBarRef.current.offsetWidth; // Force reflow
+    progressBarRef.current.style.transition = 'width 0.05s linear';
+
+    audioRef.current.play().catch(console.error);
+    snippetProgress.updateProgress(duration);
+  }, [snippetProgress]);
 
   const startGame = async () => {
-    if (!playlistUrl) {
-      setFeedback('Please enter a playlist URL.');
+    if (!state.playlistUrl) {
+      setState(prev => ({ ...prev, feedback: 'Please enter a playlist URL.' }));
       return;
     }
-    
-    try {
-      setHistory([]);
-      setCorrectSong(null);
-      setFeedback('');
 
+    try {
       const playlistResponse = await axios.get(`${import.meta.env.VITE_API_URL}/playlist`, {
-        params: { url: playlistUrl },
+        params: { url: state.playlistUrl },
       });
+
       const tracks = playlistResponse.data.tracks || [];
-      
       if (!tracks.length) {
-        setFeedback('No tracks found in the playlist.');
+        setState(prev => ({ ...prev, feedback: 'No tracks found in the playlist.' }));
         return;
       }
 
-      setRecommendedSongs(tracks);
       const targetResponse = await axios.post(`${import.meta.env.VITE_API_URL}/target`, { tracks });
       const targetTrack = targetResponse.data.track;
 
       if (!targetTrack) {
-        setFeedback("Could not find a track with a preview. Try another playlist.");
+        setState(prev => ({ ...prev, feedback: 'No tracks with previews available.' }));
         return;
       }
 
-      setSongData(targetTrack);
-      setGameStarted(true);
-      setSnippetDuration(1);
-      setAttempt(0);
-      setGuess('');
-      setCorrectGuess(false);
+      setState(prev => ({
+        ...prev,
+        gameStarted: true,
+        recommendedSongs: tracks,
+        songData: targetTrack,
+        history: [],
+        correctSong: null,
+        snippetDuration: 1,
+        attempt: 0,
+        guess: '',
+        correctGuess: false,
+        feedback: '',
+      }));
 
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.currentTime = 0;
-      }
       playSnippet(1);
     } catch (error) {
       console.error(error);
-      setFeedback('Error starting game. Check the playlist URL.');
+      setState(prev => ({ ...prev, feedback: 'Error starting game. Check the playlist URL.' }));
     }
   };
 
   const handleGuess = async (e) => {
     e.preventDefault();
-    if (!songData || !guess) return;
+    if (!state.songData || !state.guess) return;
 
     try {
       const { data } = await axios.post(`${import.meta.env.VITE_API_URL}/guess`, {
-        songId: songData.id,
-        guess,
+        songId: state.songData.id,
+        guess: state.guess,
       });
 
-      setHistory(prev => [...prev, {
-        attempt: attempt + 1,
+      const newHistory = [...state.history, {
+        attempt: state.attempt + 1,
         type: 'guess',
-        value: guess,
+        value: state.guess,
         correct: data.correct
-      }]);
+      }];
 
       if (data.correct) {
-        setFeedback('Correct!');
-        setCorrectGuess(true);
-        setCorrectSong(data.song);
+        setState(prev => ({
+          ...prev,
+          feedback: 'Correct!',
+          correctGuess: true,
+          correctSong: data.song,
+          history: newHistory,
+        }));
       } else {
-        setFeedback('Incorrect. Try again!');
+        setState(prev => ({
+          ...prev,
+          feedback: 'Incorrect. Try again!',
+          history: newHistory,
+        }));
         incrementGuess();
       }
     } catch (error) {
       console.error(error);
-      setFeedback('Error processing guess.');
+      setState(prev => ({ ...prev, feedback: 'Error processing guess.' }));
     }
   };
 
   const incrementGuess = () => {
-    setSnippetDuration(prev => prev * 2);
-    setAttempt(prev => prev + 1);
-    
-    if (attempt + 1 < maxAttempts) {
-      playSnippet(snippetDuration * 2);
+    const newDuration = state.snippetDuration * 2;
+    const newAttempt = state.attempt + 1;
+
+    setState(prev => ({
+      ...prev,
+      snippetDuration: newDuration,
+      attempt: newAttempt,
+      guess: '',
+    }));
+
+    if (newAttempt < maxAttempts) {
+      playSnippet(newDuration);
     } else {
-      setFeedback(`Game over! The song was "${songData.name}" by ${songData.artist}.`);
-      setCorrectGuess(true);
-      setCorrectSong(songData);
+      setState(prev => ({
+        ...prev,
+        feedback: `Game over! The song was "${prev.songData.name}" by ${prev.songData.artist}.`,
+        correctGuess: true,
+        correctSong: prev.songData,
+      }));
     }
   };
 
   const handleSkip = () => {
-    setHistory(prev => [...prev, {
-      attempt: attempt + 1,
-      type: 'skip',
-      value: 'Skipped'
-    }]);
-    setFeedback('');
+    setState(prev => ({
+      ...prev,
+      history: [...prev.history, {
+        attempt: prev.attempt + 1,
+        type: 'skip',
+        value: 'Skipped'
+      }],
+      feedback: '',
+    }));
     incrementGuess();
   };
 
   const handleSuggestionClick = (songName) => {
-    setGuess(songName);
-    // Force close the dropdown by filtering the suggestions
-    forceUpdate({}); // Not strictly necessary, but ensures a re-render
+    setState(prev => ({ ...prev, guess: songName }));
   };
 
   const nextSong = async () => {
     try {
-      setHistory([]);
-      setCorrectSong(null);
-      const targetResponse = await axios.post(`${import.meta.env.VITE_API_URL}/target`, { tracks: recommendedSongs });
+      const targetResponse = await axios.post(`${import.meta.env.VITE_API_URL}/target`, { 
+        tracks: state.recommendedSongs 
+      });
       const targetTrack = targetResponse.data.track;
 
       if (!targetTrack) {
-        setFeedback("No tracks with previews available.");
+        setState(prev => ({ ...prev, feedback: "No tracks with previews available." }));
         return;
       }
 
-      setSongData(targetTrack);
-      setSnippetDuration(1);
-      setAttempt(0);
-      setFeedback('');
-      setGuess('');
-      setCorrectGuess(false);
+      setState(prev => ({
+        ...prev,
+        songData: targetTrack,
+        snippetDuration: 1,
+        attempt: 0,
+        feedback: '',
+        guess: '',
+        correctGuess: false,
+        history: [],
+        correctSong: null,
+      }));
 
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.currentTime = 0;
-      }
       playSnippet(1);
     } catch (error) {
       console.error(error);
-      setFeedback("Error loading next song.");
+      setState(prev => ({ ...prev, feedback: "Error loading next song." }));
     }
   };
 
-  const filteredSongs = guess
-    ? recommendedSongs.filter(song =>
-        song.name.toLowerCase().includes(guess.toLowerCase()) &&
-        song.name.toLowerCase() !== guess.toLowerCase()
+  const filteredSongs = state.guess
+    ? state.recommendedSongs.filter(song =>
+        song.name.toLowerCase().includes(state.guess.toLowerCase()) &&
+        song.name.toLowerCase() !== state.guess.toLowerCase()
       )
     : [];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 flex items-center justify-center p-4 overflow-hidden">
       <div className="w-full max-w-lg bg-slate-800 rounded-2xl shadow-xl p-6">
         <h1 className="text-3xl font-bold text-center mb-8 text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-400">
           Trackdle
         </h1>
 
-        {!gameStarted ? (
-          <div className="space-y-6">
-            <div className="space-y-4">
-              <input
-                type="text"
-                placeholder="Enter Spotify playlist URL..."
-                value={playlistUrl}
-                onChange={(e) => setPlaylistUrl(e.target.value)}
-                className="w-full px-4 py-3 rounded-lg bg-slate-700 border border-slate-600 focus:border-amber-400 focus:ring-2 focus:ring-amber-400/30 text-white placeholder-slate-400 transition-all"
-              />
-              <button
-                onClick={startGame}
-                className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-slate-900 font-semibold rounded-lg transition-colors"
-              >
-                Start Game
-              </button>
-            </div>
-            {feedback && <p className="text-red-400 text-sm">{feedback}</p>}
-          </div>
+        {!state.gameStarted ? (
+          <PlaylistInput state={state} setState={setState} startGame={startGame} />
         ) : (
           <>
-            {!songData ? (
+            {!state.songData ? (
               <div className="text-center py-8 text-slate-400">Loading track...</div>
             ) : (
               <div className="space-y-6">
-                {!correctGuess && (
+                {!state.correctGuess ? (
                   <div className="space-y-4">
                     <div className="flex items-center justify-between mb-4">
                       <div className="text-slate-400 text-sm">
-                        Attempt {attempt + 1} of {maxAttempts}
+                        Attempt {state.attempt + 1} of {maxAttempts}
                       </div>
                       <button
-                        onClick={() => playSnippet(snippetDuration)}
+                        onClick={() => playSnippet(state.snippetDuration)}
                         className="flex items-center gap-2 px-3 py-1.5 bg-slate-700 rounded-md text-slate-300 hover:bg-slate-600 transition-colors"
                       >
                         <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
                           <path d="M8 5v14l11-7z"/>
                         </svg>
-                        Play {snippetDuration}s
+                        Play {state.snippetDuration}s
                       </button>
                     </div>
 
-                    <audio ref={audioRef} src={songData.preview_url} preload="auto" />
+                    <audio ref={audioRef} src={state.songData.preview_url} preload="auto" />
 
                     <div className="h-1.5 bg-slate-700 rounded-full overflow-hidden">
                       <div
@@ -288,12 +399,12 @@ function App() {
                       <input
                         type="text"
                         placeholder="Guess the song..."
-                        value={guess}
-                        onChange={(e) => setGuess(e.target.value)}
+                        value={state.guess}
+                        onChange={(e) => setState(prev => ({ ...prev, guess: e.target.value }))}
                         className="w-full px-4 py-3 rounded-lg bg-slate-700 border border-slate-600 focus:border-amber-400 focus:ring-2 focus:ring-amber-400/30 text-white placeholder-slate-400 transition-all"
                       />
                       {filteredSongs.length > 0 && (
-                        <ul className="absolute z-10 w-full mt-2 bg-slate-700 rounded-lg overflow-hidden shadow-lg">
+                        <ul className="absolute z-10 w-full mt-2 bg-slate-700 rounded-lg overflow-hidden shadow-lg max-h-48 overflow-y-auto">
                           {filteredSongs.map((song) => (
                             <li
                               key={song.id}
@@ -324,111 +435,34 @@ function App() {
                       </button>
                     </div>
 
-                    {history.length > 0 && (
-                      <div className="bg-slate-700/50 p-4 rounded-lg">
-                        <h3 className="text-sm text-slate-400 mb-2">Previous guesses:</h3>
-                        <div className="space-y-2">
-                          {history.map((entry) => (
-                            <div 
-                              key={entry.attempt}
-                              className="flex items-center justify-between px-3 py-2 bg-slate-800 rounded-md"
-                            >
-                              <span className="text-sm text-slate-300">
-                                {entry.type === 'skip' ? 'Skipped' : entry.value}
-                              </span>
-                              <span className="text-xs text-slate-500">
-                                Attempt {entry.attempt}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+                    {state.history.length > 0 && <GuessHistory history={state.history} />}
                   </div>
-                )}
-
-                {feedback && (
-                  <div className={`p-3 rounded-lg text-sm ${
-                    feedback.includes('Correct') 
-                      ? 'bg-green-500/10 text-green-400' 
-                      : 'bg-red-500/10 text-red-400'
-                  }`}>
-                    {feedback}
-                  </div>
-                )}
-
-                {correctGuess && correctSong && (
-                  <div className="text-center space-y-6">
-                    <div className="inline-block">
-                      <img
-                        src={correctSong.album_cover}
-                        alt={correctSong.name}
-                        className="w-48 h-48 rounded-xl object-cover mx-auto shadow-lg border border-slate-600"
-                      />
-                      <div className="mt-4 space-y-1">
-                        <h2 className="text-xl font-semibold text-white">{correctSong.name}</h2>
-                        <p className="text-slate-400">{correctSong.artist}</p>
-                      </div>
+                ) : (
+                  <>
+                    <div className={`p-3 rounded-lg text-sm ${
+                      state.feedback.includes('Correct') 
+                        ? 'bg-green-500/10 text-green-400' 
+                        : 'bg-red-500/10 text-red-400'
+                    }`}>
+                      {state.feedback}
                     </div>
-                    
-                    <div className="bg-slate-700 p-4 rounded-lg space-y-4">
-                      <div className="flex items-center justify-center gap-4">
+
+                    {state.correctSong && (
+                      <>
+                        <SongPreview 
+                          correctSong={state.correctSong} 
+                          audioRef={audioRef}
+                          fullProgressBarRef={fullProgressBarRef}
+                        />
                         <button
-                          onClick={() => {
-                            if (audioRef.current.paused) {
-                              audioRef.current.play();
-                              fullProgressAnimationRef.current = requestAnimationFrame(updateFullProgress);
-                            } else {
-                              audioRef.current.pause();
-                              cancelAnimationFrame(fullProgressAnimationRef.current);
-                            }
-                          }}
-                          className="w-10 h-10 rounded-full bg-amber-500 hover:bg-amber-400 flex items-center justify-center transition-colors"
+                          onClick={nextSong}
+                          className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-slate-900 font-semibold rounded-lg transition-colors"
                         >
-                          {audioRef.current?.paused ? (
-                            <svg className="w-5 h-5 fill-current text-slate-900" viewBox="0 0 24 24">
-                              <path d="M8 5v14l11-7z"/>
-                            </svg>
-                          ) : (
-                            <svg className="w-5 h-5 fill-current text-slate-900" viewBox="0 0 24 24">
-                              <path d="M6 4h4v16H6zm8 0h4v16h-4z"/>
-                            </svg>
-                          )}
+                          Next Song
                         </button>
-                        <div className="flex-1 space-y-2">
-                          <div className="h-1.5 bg-slate-600 rounded-full overflow-hidden">
-                            <div 
-                              ref={fullProgressBarRef}
-                              className="h-full bg-amber-400 rounded-full transition-all duration-75"
-                              style={{ width: '0%' }}
-                            />
-                          </div>
-                          <div className="flex justify-between text-xs text-slate-400">
-                            <span>
-                              {new Date(audioRef.current?.currentTime * 1000 || 0).toISOString().substr(14, 5)}
-                            </span>
-                            <span>
-                              -{new Date((audioRef.current?.duration - audioRef.current?.currentTime) * 1000 || 0).toISOString().substr(14, 5)}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                      <audio
-                        ref={audioRef}
-                        src={correctSong.preview_url}
-                        onTimeUpdate={() => forceUpdate({})}
-                        onEnded={() => cancelAnimationFrame(fullProgressAnimationRef.current)}
-                        className="hidden"
-                      />
-                    </div>
-
-                    <button
-                      onClick={nextSong}
-                      className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-slate-900 font-semibold rounded-lg transition-colors"
-                    >
-                      Next Song
-                    </button>
-                  </div>
+                      </>
+                    )}
+                  </>
                 )}
               </div>
             )}
@@ -437,6 +471,6 @@ function App() {
       </div>
     </div>
   );
-}
+};
 
 export default App;
