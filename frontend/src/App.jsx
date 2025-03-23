@@ -288,7 +288,7 @@ const App = () => {
         return;
       }
 
-      const targetResponse = await axios.post(`${import.meta.env.VITE_API_URL}/target`, { tracks });
+      const targetResponse = await axios.post(`${import.meta.env.VITE_API_URL}/playlist/target`, { tracks });
       const targetTrack = targetResponse.data.track;
 
       if (!targetTrack) {
@@ -434,7 +434,7 @@ const App = () => {
   // Load next random song from the recommended tracks
   const nextSong = async () => {
     try {
-      const targetResponse = await axios.post(`${import.meta.env.VITE_API_URL}/target`, {
+      const targetResponse = await axios.post(`${import.meta.env.VITE_API_URL}/playlist/target`, {
         tracks: state.recommendedSongs,
       });
       const targetTrack = targetResponse.data.track;
