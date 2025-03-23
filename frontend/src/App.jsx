@@ -87,7 +87,7 @@ const SongPreview = ({ correctSong, audioRef, fullProgressBarRef }) => {
   const [isPlaying, setIsPlaying] = useState(false);
 
   const togglePlayback = () => {
-    if (!audioRef.current) return;
+    if (!audioRef.current) {return;}
 
     if (audioRef.current.paused) {
       audioRef.current.play();
@@ -169,11 +169,9 @@ const App = () => {
 
   const audioRef = useRef(null);
   const progressBarRef = useRef(null);
-  const fullProgressBarRef = useRef(null);
   const maxAttempts = 5;
 
   const snippetProgress = useAudioProgress(audioRef, progressBarRef);
-  const fullProgress = useAudioProgress(audioRef, fullProgressBarRef);
 
   const playSnippet = useCallback((duration) => {
     if (!audioRef.current || !progressBarRef.current) return;
@@ -449,10 +447,11 @@ const App = () => {
 
                     {state.correctSong && (
                       <>
+                        <audio ref={audioRef} src={state.songData.preview_url} preload="auto" />
                         <SongPreview 
                           correctSong={state.correctSong} 
                           audioRef={audioRef}
-                          fullProgressBarRef={fullProgressBarRef}
+                          fullProgressBarRef={progressBarRef}
                         />
                         <button
                           onClick={nextSong}
