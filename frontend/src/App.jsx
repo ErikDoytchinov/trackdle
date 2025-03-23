@@ -324,13 +324,24 @@ const App = () => {
   const handleGuess = async (e) => {
     e.preventDefault();
     if (!state.songData || !state.guess) return;
-
+  
     try {
       const { data } = await axios.post(`${import.meta.env.VITE_API_URL}/guess`, {
         songId: state.songData.id,
         guess: state.guess,
       });
-
+  
+      // Always clear and reset the bar right when the guess is made
+      snippetProgress.clearProgress();
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+      }
+      if (progressBarRef.current) {
+        progressBarRef.current.style.transition = 'none';
+        progressBarRef.current.style.width = '0%';
+      }
+  
       const newHistory = [
         ...state.history,
         {
@@ -340,7 +351,7 @@ const App = () => {
           correct: data.correct,
         },
       ];
-
+  
       if (data.correct) {
         setState((prev) => ({
           ...prev,
@@ -388,6 +399,17 @@ const App = () => {
   };
 
   const handleSkip = () => {
+    // Reset the snippet and bar immediately upon skipping
+    snippetProgress.clearProgress();
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
+    if (progressBarRef.current) {
+      progressBarRef.current.style.transition = 'none';
+      progressBarRef.current.style.width = '0%';
+    }
+  
     setState((prev) => ({
       ...prev,
       history: [
@@ -400,8 +422,10 @@ const App = () => {
       ],
       feedback: '',
     }));
+  
     incrementGuess();
   };
+  
 
   const handleSuggestionClick = (songName) => {
     setState((prev) => ({ ...prev, guess: songName }));
