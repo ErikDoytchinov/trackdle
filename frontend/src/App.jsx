@@ -1,6 +1,10 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import axios from 'axios';
+import debounce from 'lodash.debounce';
 
+// ----------------------------------------------------
+// 1) Custom hook for audio progress
+// ----------------------------------------------------
 const useAudioProgress = (audioRef, progressBarRef) => {
   const animationFrameRef = useRef(null);
 
@@ -17,14 +21,11 @@ const useAudioProgress = (audioRef, progressBarRef) => {
    */
   const updateProgress = useCallback(
     (duration, offsetSeconds = 0) => {
-      // Clear any previous animation so we don't double up
       clearProgress();
-
       const startTime = Date.now();
 
       const animate = () => {
         const elapsed = (Date.now() - startTime) / 1000;
-        // totalElapsed = offset + how long we've animated in this run
         const totalElapsed = offsetSeconds + elapsed;
         const percent = Math.min(100, (totalElapsed / duration) * 100);
 
@@ -32,11 +33,9 @@ const useAudioProgress = (audioRef, progressBarRef) => {
           progressBarRef.current.style.width = `${percent}%`;
         }
 
-        // Keep animating if total time < duration AND the audio is not paused
         if (totalElapsed < duration && audioRef.current && !audioRef.current.paused) {
           animationFrameRef.current = requestAnimationFrame(animate);
         } else if (totalElapsed >= duration) {
-          // If we've exceeded the total duration, pause the audio
           audioRef.current?.pause();
         }
       };
@@ -46,7 +45,6 @@ const useAudioProgress = (audioRef, progressBarRef) => {
     [audioRef, progressBarRef, clearProgress]
   );
 
-  // Clean up on unmount
   useEffect(() => {
     return () => clearProgress();
   }, [clearProgress]);
@@ -58,7 +56,7 @@ const useAudioProgress = (audioRef, progressBarRef) => {
 // 2) Sub-components
 // ----------------------------------------------------
 
-// Playlist input
+// Playlist input component
 const PlaylistInput = ({ state, setState, startGame }) => (
   <div className="space-y-6">
     <div className="space-y-4">
@@ -66,7 +64,9 @@ const PlaylistInput = ({ state, setState, startGame }) => (
         type="text"
         placeholder="Enter Spotify playlist URL..."
         value={state.playlistUrl}
-        onChange={(e) => setState((prev) => ({ ...prev, playlistUrl: e.target.value }))}
+        onChange={(e) =>
+          setState((prev) => ({ ...prev, playlistUrl: e.target.value }))
+        }
         className="w-full px-4 py-3 rounded-lg bg-slate-700 border border-slate-600 focus:border-amber-400 focus:ring-2 focus:ring-amber-400/30 text-white placeholder-slate-400 transition-all"
       />
       <button
@@ -80,7 +80,7 @@ const PlaylistInput = ({ state, setState, startGame }) => (
   </div>
 );
 
-// Guess history
+// Guess history component
 const GuessHistory = ({ history }) => (
   <div className="bg-slate-700/50 p-4 rounded-lg">
     <h3 className="text-sm text-slate-400 mb-2">Previous guesses:</h3>
@@ -100,34 +100,24 @@ const GuessHistory = ({ history }) => (
   </div>
 );
 
-// ----------------------------------------------------
-// 3) SongPreview with offset-based progress
-// ----------------------------------------------------
+// SongPreview component for final preview with offset-based progress
 const SongPreview = ({ correctSong, audioRef, fullProgressBarRef }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
-
   const { clearProgress, updateProgress } = useAudioProgress(audioRef, fullProgressBarRef);
 
-  // Keep the displayed time in sync
   useEffect(() => {
     const current = audioRef.current;
     if (!current) return;
-
     const handleTimeUpdate = () => {
       setCurrentTime(current.currentTime);
     };
-
     current.addEventListener('timeupdate', handleTimeUpdate);
-
     return () => {
-      if (current) {
-        current.removeEventListener('timeupdate', handleTimeUpdate);
-      }
+      current.removeEventListener('timeupdate', handleTimeUpdate);
     };
   }, [audioRef]);
 
-  // Utility to format seconds -> mm:ss
   const formatTime = (seconds) => {
     if (!seconds || isNaN(seconds)) return '00:00';
     const mins = Math.floor(seconds / 60);
@@ -135,15 +125,11 @@ const SongPreview = ({ correctSong, audioRef, fullProgressBarRef }) => {
     return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   };
 
-  // Offset-based playback
   const togglePlayback = useCallback(() => {
     if (!audioRef.current) return;
-
     if (audioRef.current.paused) {
       audioRef.current.play();
       setIsPlaying(true);
-
-      // Pass currentTime as the "offset" so bar doesn't reset
       if (audioRef.current.duration) {
         updateProgress(audioRef.current.duration, audioRef.current.currentTime);
       }
@@ -154,21 +140,16 @@ const SongPreview = ({ correctSong, audioRef, fullProgressBarRef }) => {
     }
   }, [audioRef, updateProgress, clearProgress]);
 
-  // Handle audio end
   useEffect(() => {
     const current = audioRef.current;
     if (!current) return;
-
     const onEnded = () => {
       setIsPlaying(false);
       clearProgress();
     };
-
     current.addEventListener('ended', onEnded);
     return () => {
-      if (current) {
-        current.removeEventListener('ended', onEnded);
-      }
+      current.removeEventListener('ended', onEnded);
     };
   }, [audioRef, clearProgress]);
 
@@ -224,9 +205,10 @@ const SongPreview = ({ correctSong, audioRef, fullProgressBarRef }) => {
 };
 
 // ----------------------------------------------------
-// 4) Main App component
+// 3) Main App component with enhanced autocomplete
 // ----------------------------------------------------
 const App = () => {
+  // Main game state
   const [state, setState] = useState({
     playlistUrl: '',
     songData: null,
@@ -240,21 +222,37 @@ const App = () => {
     history: [],
     correctSong: null,
   });
+  // For managing the controlled input (immediate value)
+  const [inputValue, setInputValue] = useState('');
+  // For showing/hiding suggestions and keyboard navigation
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [activeSuggestion, setActiveSuggestion] = useState(0);
 
   const audioRef = useRef(null);
-  // The same ref is used for snippet progress and final preview progress,
-  // but you can separate them if desired.
   const progressBarRef = useRef(null);
   const maxAttempts = 5;
-
-  // This instance is used for snippet playback
   const snippetProgress = useAudioProgress(audioRef, progressBarRef);
 
-  // Play a short snippet (always from time=0, no offset needed)
+  // Debounced setter for the guess (to optimize filtering)
+  const debouncedSetGuess = useCallback(
+    debounce((value) => {
+      setState((prev) => ({ ...prev, guess: value }));
+    }, 300),
+    []
+  );
+
+  // Filter suggestions using memoization
+  const filteredSongs = useMemo(() => {
+    if (!state.guess) return [];
+    return state.recommendedSongs.filter((song) =>
+      song.name.toLowerCase().includes(state.guess.toLowerCase())
+    );
+  }, [state.guess, state.recommendedSongs]);
+
+  // Play snippet function (always plays from time 0)
   const playSnippet = useCallback(
     (duration) => {
       if (!audioRef.current || !progressBarRef.current) return;
-
       snippetProgress.clearProgress();
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
@@ -270,32 +268,27 @@ const App = () => {
     [snippetProgress]
   );
 
-  // Start the game by fetching a random track from the playlist
+  // Start game: fetch playlist and pick a target song
   const startGame = async () => {
     if (!state.playlistUrl) {
       setState((prev) => ({ ...prev, feedback: 'Please enter a playlist URL.' }));
       return;
     }
-
     try {
       const playlistResponse = await axios.get(`${import.meta.env.VITE_API_URL}/playlist`, {
         params: { url: state.playlistUrl },
       });
-
       const tracks = playlistResponse.data.tracks || [];
       if (!tracks.length) {
         setState((prev) => ({ ...prev, feedback: 'No tracks found in the playlist.' }));
         return;
       }
-
       const targetResponse = await axios.post(`${import.meta.env.VITE_API_URL}/playlist/target`, { tracks });
       const targetTrack = targetResponse.data.track;
-
       if (!targetTrack) {
         setState((prev) => ({ ...prev, feedback: 'No tracks with previews available.' }));
         return;
       }
-
       setState((prev) => ({
         ...prev,
         gameStarted: true,
@@ -309,7 +302,7 @@ const App = () => {
         correctGuess: false,
         feedback: '',
       }));
-
+      setInputValue('');
       playSnippet(1);
     } catch (error) {
       console.error(error);
@@ -324,14 +317,11 @@ const App = () => {
   const handleGuess = async (e) => {
     e.preventDefault();
     if (!state.songData || !state.guess) return;
-  
     try {
       const { data } = await axios.post(`${import.meta.env.VITE_API_URL}/guess`, {
         songId: state.songData.id,
         guess: state.guess,
       });
-  
-      // Always clear and reset the bar right when the guess is made
       snippetProgress.clearProgress();
       if (audioRef.current) {
         audioRef.current.pause();
@@ -341,7 +331,6 @@ const App = () => {
         progressBarRef.current.style.transition = 'none';
         progressBarRef.current.style.width = '0%';
       }
-  
       const newHistory = [
         ...state.history,
         {
@@ -351,7 +340,6 @@ const App = () => {
           correct: data.correct,
         },
       ];
-  
       if (data.correct) {
         setState((prev) => ({
           ...prev,
@@ -374,18 +362,17 @@ const App = () => {
     }
   };
 
-  // Increase snippet length (double it) and attempt count
+  // Increase snippet duration and attempt count
   const incrementGuess = () => {
     const newDuration = state.snippetDuration * 2;
     const newAttempt = state.attempt + 1;
-
     setState((prev) => ({
       ...prev,
       snippetDuration: newDuration,
       attempt: newAttempt,
       guess: '',
     }));
-
+    setInputValue('');
     if (newAttempt < maxAttempts) {
       playSnippet(newDuration);
     } else {
@@ -398,8 +385,8 @@ const App = () => {
     }
   };
 
+  // Handle skipping a guess
   const handleSkip = () => {
-    // Reset the snippet and bar immediately upon skipping
     snippetProgress.clearProgress();
     if (audioRef.current) {
       audioRef.current.pause();
@@ -409,7 +396,6 @@ const App = () => {
       progressBarRef.current.style.transition = 'none';
       progressBarRef.current.style.width = '0%';
     }
-  
     setState((prev) => ({
       ...prev,
       history: [
@@ -422,23 +408,24 @@ const App = () => {
       ],
       feedback: '',
     }));
-  
+    setInputValue('');
     incrementGuess();
   };
-  
 
+  // When a suggestion is clicked
   const handleSuggestionClick = (songName) => {
+    setInputValue(songName);
     setState((prev) => ({ ...prev, guess: songName }));
+    setShowSuggestions(false);
   };
 
-  // Load next random song from the recommended tracks
+  // Load next random song from the playlist
   const nextSong = async () => {
     try {
       const targetResponse = await axios.post(`${import.meta.env.VITE_API_URL}/playlist/target`, {
         tracks: state.recommendedSongs,
       });
       const targetTrack = targetResponse.data.track;
-
       if (!targetTrack) {
         setState((prev) => ({
           ...prev,
@@ -446,7 +433,6 @@ const App = () => {
         }));
         return;
       }
-
       setState((prev) => ({
         ...prev,
         songData: targetTrack,
@@ -458,7 +444,7 @@ const App = () => {
         history: [],
         correctSong: null,
       }));
-
+      setInputValue('');
       playSnippet(1);
     } catch (error) {
       console.error(error);
@@ -468,15 +454,6 @@ const App = () => {
       }));
     }
   };
-
-  // Filter suggestions based on user guess
-  const filteredSongs = state.guess
-    ? state.recommendedSongs.filter(
-        (song) =>
-          song.name.toLowerCase().includes(state.guess.toLowerCase()) &&
-          song.name.toLowerCase() !== state.guess.toLowerCase()
-      )
-    : [];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 flex items-center justify-center p-4 overflow-hidden">
@@ -524,19 +501,48 @@ const App = () => {
                       <input
                         type="text"
                         placeholder="Guess the song..."
-                        value={state.guess}
-                        onChange={(e) =>
-                          setState((prev) => ({ ...prev, guess: e.target.value }))
-                        }
+                        value={inputValue}
+                        onChange={(e) => {
+                          setInputValue(e.target.value);
+                          debouncedSetGuess(e.target.value);
+                        }}
+                        onFocus={() => setShowSuggestions(true)}
+                        onBlur={() => setTimeout(() => setShowSuggestions(false), 100)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'ArrowDown') {
+                            e.preventDefault();
+                            setActiveSuggestion((prev) =>
+                              Math.min(prev + 1, filteredSongs.length - 1)
+                            );
+                          } else if (e.key === 'ArrowUp') {
+                            e.preventDefault();
+                            setActiveSuggestion((prev) => Math.max(prev - 1, 0));
+                          } else if (e.key === 'Enter') {
+                            if (showSuggestions && filteredSongs.length > 0) {
+                              e.preventDefault();
+                              handleSuggestionClick(filteredSongs[activeSuggestion].name);
+                            }
+                          }
+                        }}
+                        aria-autocomplete="list"
+                        aria-controls="suggestion-list"
                         className="w-full px-4 py-3 rounded-lg bg-slate-700 border border-slate-600 focus:border-amber-400 focus:ring-2 focus:ring-amber-400/30 text-white placeholder-slate-400 transition-all"
                       />
-                      {filteredSongs.length > 0 && (
-                        <ul className="absolute z-10 w-full mt-2 bg-slate-700 rounded-lg overflow-hidden shadow-lg max-h-48 overflow-y-auto">
-                          {filteredSongs.map((song) => (
+                      {showSuggestions && filteredSongs.length > 0 && (
+                        <ul
+                          id="suggestion-list"
+                          className="absolute z-10 w-full mt-2 bg-slate-700 rounded-lg overflow-hidden shadow-lg max-h-48 overflow-y-auto"
+                          role="listbox"
+                        >
+                          {filteredSongs.map((song, index) => (
                             <li
                               key={song.id}
                               onClick={() => handleSuggestionClick(song.name)}
-                              className="px-4 py-2 cursor-pointer hover:bg-slate-600 transition-colors border-t border-slate-600 first:border-t-0"
+                              className={`px-4 py-2 cursor-pointer border-t border-slate-600 first:border-t-0 transition-colors ${
+                                index === activeSuggestion ? 'bg-slate-600' : 'hover:bg-slate-600'
+                              }`}
+                              role="option"
+                              aria-selected={index === activeSuggestion}
                             >
                               <div className="text-white">{song.name}</div>
                               <div className="text-sm text-slate-400">{song.artist}</div>
@@ -575,13 +581,8 @@ const App = () => {
                     >
                       {state.feedback}
                     </div>
-
                     {state.correctSong && (
                       <>
-                        {/* 
-                          We reuse the same audioRef and progressBarRef for final preview if you want. 
-                          Alternatively, you could store separate refs for snippet vs. final preview.
-                        */}
                         <audio ref={audioRef} src={state.songData.preview_url} preload="auto" />
                         <SongPreview
                           correctSong={state.correctSong}
