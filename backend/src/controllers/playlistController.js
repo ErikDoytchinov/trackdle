@@ -37,7 +37,6 @@ async function getTargetTrack(req, res) {
       return res.status(400).json({ error: "No tracks provided." });
     }
 
-    // Clone and shuffle the tracks using Fisher-Yates algorithm
     const shuffledTracks = shuffleArray([...tracks]);
 
     let target = null;
@@ -69,9 +68,7 @@ async function getTargetTrack(req, res) {
  */
 function shuffleArray(array) {
   for (let i = array.length - 1; i > 0; i--) {
-    // Generate a random index from 0 to i (inclusive)
     const j = Math.floor(Math.random() * (i + 1));
-    // Swap elements at indices i and j
     [array[i], array[j]] = [array[j], array[i]];
   }
   return array;
