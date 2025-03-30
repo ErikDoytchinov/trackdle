@@ -36,8 +36,9 @@ async function getTargetTrack(req, res) {
     if (!tracks || !Array.isArray(tracks) || tracks.length === 0) {
       return res.status(400).json({ error: "No tracks provided." });
     }
-    // Shuffle the tracks randomly
-    const shuffledTracks = tracks.sort(() => Math.random() - 0.5);
+
+    // Clone and shuffle the tracks using Fisher-Yates algorithm
+    const shuffledTracks = shuffleArray([...tracks]);
 
     let target = null;
     // Try each track until one with a preview is found
@@ -61,6 +62,21 @@ async function getTargetTrack(req, res) {
     res.status(500).json({ error: err.message });
   }
 }
+
+/**
+ * Fisher-Yates Shuffle Algorithm
+ * Shuffles an array in place and returns it.
+ */
+function shuffleArray(array) {
+  for (let i = array.length - 1; i > 0; i--) {
+    // Generate a random index from 0 to i (inclusive)
+    const j = Math.floor(Math.random() * (i + 1));
+    // Swap elements at indices i and j
+    [array[i], array[j]] = [array[j], array[i]];
+  }
+  return array;
+}
+
 
 module.exports = {
   getPlaylist,
