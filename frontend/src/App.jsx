@@ -15,31 +15,23 @@ const useAudioProgress = (audioRef, progressBarRef) => {
     }
   }, []);
 
-  /**
-   * @param {number} duration - total audio duration in seconds
-   * @param {number} offsetSeconds - how many seconds have already elapsed
-   */
   const updateProgress = useCallback(
     (duration, offsetSeconds = 0) => {
       clearProgress();
       const startTime = Date.now();
-
       const animate = () => {
         const elapsed = (Date.now() - startTime) / 1000;
         const totalElapsed = offsetSeconds + elapsed;
         const percent = Math.min(100, (totalElapsed / duration) * 100);
-
         if (progressBarRef.current) {
           progressBarRef.current.style.width = `${percent}%`;
         }
-
         if (totalElapsed < duration && audioRef.current && !audioRef.current.paused) {
           animationFrameRef.current = requestAnimationFrame(animate);
         } else if (totalElapsed >= duration) {
           audioRef.current?.pause();
         }
       };
-
       animationFrameRef.current = requestAnimationFrame(animate);
     },
     [audioRef, progressBarRef, clearProgress]
@@ -56,7 +48,7 @@ const useAudioProgress = (audioRef, progressBarRef) => {
 // 2) Sub-components
 // ----------------------------------------------------
 
-// Playlist input component
+// PlaylistInput component: Collects a Spotify playlist URL.
 const PlaylistInput = ({ state, setState, startGame }) => (
   <div className="space-y-6">
     <div className="space-y-4">
@@ -64,9 +56,7 @@ const PlaylistInput = ({ state, setState, startGame }) => (
         type="text"
         placeholder="Enter Spotify playlist URL..."
         value={state.playlistUrl}
-        onChange={(e) =>
-          setState((prev) => ({ ...prev, playlistUrl: e.target.value }))
-        }
+        onChange={(e) => setState((prev) => ({ ...prev, playlistUrl: e.target.value }))}
         className="w-full px-4 py-3 rounded-lg bg-slate-700 border border-slate-600 focus:border-amber-400 focus:ring-2 focus:ring-amber-400/30 text-white placeholder-slate-400 transition-all"
       />
       <button
@@ -80,7 +70,7 @@ const PlaylistInput = ({ state, setState, startGame }) => (
   </div>
 );
 
-// Guess history component
+// GuessHistory component: Displays previous guesses/skips.
 const GuessHistory = ({ history }) => (
   <div className="bg-slate-700/50 p-4 rounded-lg">
     <h3 className="text-sm text-slate-400 mb-2">Previous guesses:</h3>
@@ -100,7 +90,7 @@ const GuessHistory = ({ history }) => (
   </div>
 );
 
-// SongPreview component for final preview with offset-based progress
+// SongPreview component: Shows full song details once the answer is revealed.
 const SongPreview = ({ correctSong, audioRef, fullProgressBarRef }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -113,9 +103,7 @@ const SongPreview = ({ correctSong, audioRef, fullProgressBarRef }) => {
       setCurrentTime(current.currentTime);
     };
     current.addEventListener('timeupdate', handleTimeUpdate);
-    return () => {
-      current.removeEventListener('timeupdate', handleTimeUpdate);
-    };
+    return () => current.removeEventListener('timeupdate', handleTimeUpdate);
   }, [audioRef]);
 
   const formatTime = (seconds) => {
@@ -148,9 +136,7 @@ const SongPreview = ({ correctSong, audioRef, fullProgressBarRef }) => {
       clearProgress();
     };
     current.addEventListener('ended', onEnded);
-    return () => {
-      current.removeEventListener('ended', onEnded);
-    };
+    return () => current.removeEventListener('ended', onEnded);
   }, [audioRef, clearProgress]);
 
   return (
@@ -166,7 +152,6 @@ const SongPreview = ({ correctSong, audioRef, fullProgressBarRef }) => {
           <p className="text-slate-400">{correctSong.artist}</p>
         </div>
       </div>
-
       <div className="bg-slate-700 p-4 rounded-lg space-y-4">
         <div className="flex items-center justify-center gap-4">
           <button
@@ -205,13 +190,15 @@ const SongPreview = ({ correctSong, audioRef, fullProgressBarRef }) => {
 };
 
 // ----------------------------------------------------
-// 3) Main App component with enhanced autocomplete
+// 3) Main App Component
 // ----------------------------------------------------
 const App = () => {
-  // Main game state
   const [state, setState] = useState({
     playlistUrl: '',
+    sessionId: null,
+    // Initially, songData holds only the preview URL.
     songData: null,
+    // Full list of tracks for autocomplete suggestions.
     recommendedSongs: [],
     gameStarted: false,
     snippetDuration: 1,
@@ -222,9 +209,7 @@ const App = () => {
     history: [],
     correctSong: null,
   });
-  // For managing the controlled input (immediate value)
   const [inputValue, setInputValue] = useState('');
-  // For showing/hiding suggestions and keyboard navigation
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [activeSuggestion, setActiveSuggestion] = useState(0);
 
@@ -233,7 +218,6 @@ const App = () => {
   const maxAttempts = 5;
   const snippetProgress = useAudioProgress(audioRef, progressBarRef);
 
-  // Debounced setter for the guess (to optimize filtering)
   const debouncedSetGuess = useCallback(
     debounce((value) => {
       setState((prev) => ({ ...prev, guess: value }));
@@ -241,7 +225,6 @@ const App = () => {
     []
   );
 
-  // Filter suggestions using memoization
   const filteredSongs = useMemo(() => {
     if (!state.guess) return [];
     return state.recommendedSongs.filter((song) =>
@@ -249,120 +232,23 @@ const App = () => {
     );
   }, [state.guess, state.recommendedSongs]);
 
-  // Play snippet function (always plays from time 0)
   const playSnippet = useCallback(
     (duration) => {
       if (!audioRef.current || !progressBarRef.current) return;
       snippetProgress.clearProgress();
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
-
       progressBarRef.current.style.transition = 'none';
       progressBarRef.current.style.width = '0%';
       progressBarRef.current.offsetWidth; // Force reflow
       progressBarRef.current.style.transition = 'width 0.05s linear';
-
       audioRef.current.play().catch(console.error);
       snippetProgress.updateProgress(duration, 0);
     },
     [snippetProgress]
   );
 
-  // Start game: fetch playlist and pick a target song
-  const startGame = async () => {
-    if (!state.playlistUrl) {
-      setState((prev) => ({ ...prev, feedback: 'Please enter a playlist URL.' }));
-      return;
-    }
-    try {
-      const playlistResponse = await axios.get(`${import.meta.env.VITE_API_URL}/playlist`, {
-        params: { url: state.playlistUrl },
-      });
-      const tracks = playlistResponse.data.tracks || [];
-      if (!tracks.length) {
-        setState((prev) => ({ ...prev, feedback: 'No tracks found in the playlist.' }));
-        return;
-      }
-      const targetResponse = await axios.post(`${import.meta.env.VITE_API_URL}/playlist/target`, { tracks });
-      const targetTrack = targetResponse.data.track;
-      if (!targetTrack) {
-        setState((prev) => ({ ...prev, feedback: 'No tracks with previews available.' }));
-        return;
-      }
-      setState((prev) => ({
-        ...prev,
-        gameStarted: true,
-        recommendedSongs: tracks,
-        songData: targetTrack,
-        history: [],
-        correctSong: null,
-        snippetDuration: 1,
-        attempt: 0,
-        guess: '',
-        correctGuess: false,
-        feedback: '',
-      }));
-      setInputValue('');
-      playSnippet(1);
-    } catch (error) {
-      console.error(error);
-      setState((prev) => ({
-        ...prev,
-        feedback: 'Error starting game. Check the playlist URL.',
-      }));
-    }
-  };
-
-  // Handle guess submission
-  const handleGuess = async (e) => {
-    e.preventDefault();
-    if (!state.songData || !state.guess) return;
-    try {
-      const { data } = await axios.post(`${import.meta.env.VITE_API_URL}/guess`, {
-        songId: state.songData.id,
-        guess: state.guess,
-      });
-      snippetProgress.clearProgress();
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.currentTime = 0;
-      }
-      if (progressBarRef.current) {
-        progressBarRef.current.style.transition = 'none';
-        progressBarRef.current.style.width = '0%';
-      }
-      const newHistory = [
-        ...state.history,
-        {
-          attempt: state.attempt + 1,
-          type: 'guess',
-          value: state.guess,
-          correct: data.correct,
-        },
-      ];
-      if (data.correct) {
-        setState((prev) => ({
-          ...prev,
-          feedback: 'Correct!',
-          correctGuess: true,
-          correctSong: data.song,
-          history: newHistory,
-        }));
-      } else {
-        setState((prev) => ({
-          ...prev,
-          feedback: 'Incorrect. Try again!',
-          history: newHistory,
-        }));
-        incrementGuess();
-      }
-    } catch (error) {
-      console.error(error);
-      setState((prev) => ({ ...prev, feedback: 'Error processing guess.' }));
-    }
-  };
-
-  // Increase snippet duration and attempt count
+  // Increase attempt count and double snippet duration.
   const incrementGuess = () => {
     const newDuration = state.snippetDuration * 2;
     const newAttempt = state.attempt + 1;
@@ -378,64 +264,163 @@ const App = () => {
     } else {
       setState((prev) => ({
         ...prev,
-        feedback: `Game over! The song was "${prev.songData.name}" by ${prev.songData.artist}.`,
+        feedback: `Game over! The correct song was not guessed.`,
         correctGuess: true,
-        correctSong: prev.songData,
       }));
     }
   };
 
-  // Handle skipping a guess
-  const handleSkip = () => {
-    snippetProgress.clearProgress();
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
+  // Start game: POST /session returns sessionId and tracks; then GET /session returns preview details.
+  const startGame = async () => {
+    if (!state.playlistUrl) {
+      setState((prev) => ({ ...prev, feedback: 'Please enter a playlist URL.' }));
+      return;
     }
-    if (progressBarRef.current) {
-      progressBarRef.current.style.transition = 'none';
-      progressBarRef.current.style.width = '0%';
-    }
-    setState((prev) => ({
-      ...prev,
-      history: [
-        ...prev.history,
-        {
-          attempt: prev.attempt + 1,
-          type: 'skip',
-          value: 'Skipped',
-        },
-      ],
-      feedback: '',
-    }));
-    setInputValue('');
-    incrementGuess();
-  };
-
-  // When a suggestion is clicked
-  const handleSuggestionClick = (songName) => {
-    setInputValue(songName);
-    setState((prev) => ({ ...prev, guess: songName }));
-    setShowSuggestions(false);
-  };
-
-  // Load next random song from the playlist
-  const nextSong = async () => {
     try {
-      const targetResponse = await axios.post(`${import.meta.env.VITE_API_URL}/playlist/target`, {
-        tracks: state.recommendedSongs,
-      });
-      const targetTrack = targetResponse.data.track;
-      if (!targetTrack) {
-        setState((prev) => ({
-          ...prev,
-          feedback: 'No tracks with previews available.',
-        }));
-        return;
-      }
+      // Create a new session.
+      const sessionResponse = await axios.post(
+        `${import.meta.env.VITE_API_URL}/session`,
+        { playlist_url: state.playlistUrl }
+      );
+      const sessionId = sessionResponse.data.session_id;
+      const tracks = sessionResponse.data.tracks;
+      // Now fetch session details to get the preview URL.
+      const detailsResponse = await axios.get(`${import.meta.env.VITE_API_URL}/session/${sessionId}`);
+      const sessionData = detailsResponse.data.session;
+      const songData = { preview_url: sessionData.targetPreview };
       setState((prev) => ({
         ...prev,
-        songData: targetTrack,
+        sessionId,
+        gameStarted: true,
+        recommendedSongs: tracks,
+        songData,
+        history: [],
+        correctSong: null,
+        snippetDuration: 1,
+        attempt: sessionData.attempts,
+        guess: '',
+        correctGuess: false,
+        feedback: '',
+      }));
+      setInputValue('');
+      playSnippet(1);
+    } catch (error) {
+      console.error(error);
+      setState((prev) => ({
+        ...prev,
+        feedback: 'Error starting game. Check the playlist URL.',
+      }));
+    }
+  };
+
+  // Handle a normal guess: POST /session/{sessionId}/guess with { guess }.
+  const handleGuess = async (e) => {
+    e.preventDefault();
+    if (!state.songData || (!state.guess && state.guess !== '')) return;
+    try {
+      const { data } = await axios.post(
+        `${import.meta.env.VITE_API_URL}/session/${state.sessionId}/guess`,
+        { guess: state.guess }
+      );
+      snippetProgress.clearProgress();
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+      }
+      if (progressBarRef.current) {
+        progressBarRef.current.style.transition = 'none';
+        progressBarRef.current.style.width = '0%';
+      }
+      const newHistory = [
+        ...state.history,
+        { attempt: state.attempt + 1, type: 'guess', value: state.guess, correct: data.correct },
+      ];
+      if (data.correct) {
+        // Correct guess: update with full song details.
+        setState((prev) => ({
+          ...prev,
+          feedback: 'Correct!',
+          correctGuess: true,
+          correctSong: data.song,
+          history: newHistory,
+        }));
+      } else {
+        // Incorrect guess: update hint level if provided, then increment.
+        setState((prev) => ({
+          ...prev,
+          feedback: data.hintLevel
+            ? `Hint level increased to ${data.hintLevel}.`
+            : 'Incorrect. Try again!',
+          history: newHistory,
+        }));
+        incrementGuess();
+      }
+    } catch (error) {
+      console.error(error);
+      setState((prev) => ({ ...prev, feedback: 'Error processing guess.' }));
+    }
+  };
+
+  // Handle skip: POST /session/{sessionId}/guess with { skip: true }.
+  const handleSkip = async () => {
+    try {
+      const { data } = await axios.post(
+        `${import.meta.env.VITE_API_URL}/session/${state.sessionId}/guess`,
+        { skip: true }
+      );
+      snippetProgress.clearProgress();
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+      }
+      if (progressBarRef.current) {
+        progressBarRef.current.style.transition = 'none';
+        progressBarRef.current.style.width = '0%';
+      }
+      const newHistory = [
+        ...state.history,
+        { attempt: state.attempt + 1, type: 'skip', value: 'Skipped' },
+      ];
+      if (data.correct) {
+        // Reveal answer if 5 attempts reached.
+        setState((prev) => ({
+          ...prev,
+          feedback: 'Game over! The song has been revealed.',
+          correctGuess: true,
+          correctSong: data.song,
+          history: newHistory,
+        }));
+      } else {
+        setState((prev) => ({
+          ...prev,
+          feedback: data.hintLevel
+            ? `Hint level increased to ${data.hintLevel}.`
+            : 'Skipped.',
+          history: newHistory,
+        }));
+        incrementGuess();
+      }
+    } catch (error) {
+      console.error(error);
+      setState((prev) => ({ ...prev, feedback: 'Error processing skip.' }));
+    }
+  };
+
+  // Next song: POST /session/{sessionId}/next to update the preview.
+  const nextSong = async () => {
+    try {
+      const targetResponse = await axios.post(
+        `${import.meta.env.VITE_API_URL}/session/${state.sessionId}/next`
+      );
+      const targetTrack = targetResponse.data.track;
+      if (!targetTrack) {
+        setState((prev) => ({ ...prev, feedback: 'No preview available.' }));
+        return;
+      }
+      const songData = { preview_url: targetTrack.preview_url };
+      setState((prev) => ({
+        ...prev,
+        songData,
         snippetDuration: 1,
         attempt: 0,
         feedback: '',
@@ -448,11 +433,14 @@ const App = () => {
       playSnippet(1);
     } catch (error) {
       console.error(error);
-      setState((prev) => ({
-        ...prev,
-        feedback: 'Error loading next song.',
-      }));
+      setState((prev) => ({ ...prev, feedback: 'Error loading next song.' }));
     }
+  };
+
+  const handleSuggestionClick = (songName) => {
+    setInputValue(songName);
+    setState((prev) => ({ ...prev, guess: songName }));
+    setShowSuggestions(false);
   };
 
   return (
@@ -461,7 +449,6 @@ const App = () => {
         <h1 className="text-3xl font-bold text-center mb-8 text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-400">
           Trackdle
         </h1>
-
         {!state.gameStarted ? (
           <PlaylistInput state={state} setState={setState} startGame={startGame} />
         ) : (
@@ -486,17 +473,10 @@ const App = () => {
                         Play {state.snippetDuration}s
                       </button>
                     </div>
-
                     <audio ref={audioRef} src={state.songData.preview_url} preload="auto" />
-
-                    {/* Snippet progress bar */}
                     <div className="h-1.5 bg-slate-700 rounded-full overflow-hidden">
-                      <div
-                        ref={progressBarRef}
-                        className="h-full bg-amber-400 rounded-full transition-all duration-75"
-                      />
+                      <div ref={progressBarRef} className="h-full bg-amber-400 rounded-full transition-all duration-75" />
                     </div>
-
                     <form onSubmit={handleGuess} className="relative">
                       <input
                         type="text"
@@ -551,7 +531,6 @@ const App = () => {
                         </ul>
                       )}
                     </form>
-
                     <div className="grid grid-cols-2 gap-3">
                       <button
                         onClick={handleSkip}
@@ -567,7 +546,6 @@ const App = () => {
                         Submit
                       </button>
                     </div>
-
                     {state.history.length > 0 && <GuessHistory history={state.history} />}
                   </div>
                 ) : (
@@ -584,11 +562,7 @@ const App = () => {
                     {state.correctSong && (
                       <>
                         <audio ref={audioRef} src={state.songData.preview_url} preload="auto" />
-                        <SongPreview
-                          correctSong={state.correctSong}
-                          audioRef={audioRef}
-                          fullProgressBarRef={progressBarRef}
-                        />
+                        <SongPreview correctSong={state.correctSong} audioRef={audioRef} fullProgressBarRef={progressBarRef} />
                         <button
                           onClick={nextSong}
                           className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-slate-900 font-semibold rounded-lg transition-colors"

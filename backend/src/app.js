@@ -4,6 +4,7 @@ const cors = require('cors');
 const morgan = require('morgan');
 const routes = require('./routes');
 const logger = require('./config/logger');
+const mongoose = require('mongoose');
 
 const allowedOrigins = [
   'https://trackdle.doytchinov.eu',
@@ -34,6 +35,12 @@ function createApp() {
     next();
   });
 
+  const mongoURI = process.env.MONGO_URI || 'mongodb://localhost:27017/trackdle';
+  
+  mongoose.connect(mongoURI)
+    .then(() => console.log('MongoDB connected'))
+    .catch(err => console.error('MongoDB connection error:', err));
+  
   app.use('/', routes);
 
   return app;

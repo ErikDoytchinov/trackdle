@@ -3,10 +3,10 @@ const router = express.Router();
 
 const playlistRoutes = require('./playlist');
 const guessRoutes = require('./guess');
-// In the future add: const authRoutes = require('./auth');
+const sessionRoutes = require('./session');
 
 router.use('/playlist', playlistRoutes);
 router.use('/guess', guessRoutes);
-// router.use('/auth', authRoutes);
+router.use('/session', sessionRoutes);
 
 module.exports = router;
