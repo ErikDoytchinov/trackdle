@@ -1,4 +1,3 @@
-// controllers/sessionController.js
 const logger = require('../config/logger');
 const { createSession, getSessionById, nextTarget } = require('../services/sessionService');
 
@@ -8,13 +7,14 @@ const { createSession, getSessionById, nextTarget } = require('../services/sessi
  */
 async function postSession(req, res) {
   try {
-    const { playlist_url } = req.body;
-    if (!playlist_url) {
+    // Read mode and playlist_url from the request; default mode to 'playlist'
+    const { mode = 'playlist', playlist_url } = req.body;
+    if (mode === 'playlist' && !playlist_url) {
       return res.status(400).json({ error: "Missing playlist URL" });
     }
-    logger.info(`Creating new session for playlist: ${playlist_url}`);
-    // createSession now returns both the session document and the full list of tracks.
-    const { session, tracks } = await createSession(playlist_url);
+    logger.info(`Creating new session with mode: ${mode}${playlist_url ? ` for playlist: ${playlist_url}` : ''}`);
+    // createSession now accepts mode and (optionally) playlist_url.
+    const { session, tracks } = await createSession(mode, playlist_url);
     logger.info(`Created new session with ID: ${session._id}`);
     res.json({ session_id: session._id, tracks });
   } catch (err) {

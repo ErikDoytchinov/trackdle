@@ -1,204 +1,17 @@
-import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useCallback, useMemo } from 'react';
 import axios from 'axios';
 import debounce from 'lodash.debounce';
+import GameSetup from './components/GameSetup';
+import GuessHistory from './components/GuessHistory';
+import SongPreview from './components/SongPreview';
+import useAudioProgress from './hooks/useAudioProgress';
 
-// ----------------------------------------------------
-// 1) Custom hook for audio progress
-// ----------------------------------------------------
-const useAudioProgress = (audioRef, progressBarRef) => {
-  const animationFrameRef = useRef(null);
-
-  const clearProgress = useCallback(() => {
-    if (animationFrameRef.current) {
-      cancelAnimationFrame(animationFrameRef.current);
-      animationFrameRef.current = null;
-    }
-  }, []);
-
-  const updateProgress = useCallback(
-    (duration, offsetSeconds = 0) => {
-      clearProgress();
-      const startTime = Date.now();
-      const animate = () => {
-        const elapsed = (Date.now() - startTime) / 1000;
-        const totalElapsed = offsetSeconds + elapsed;
-        const percent = Math.min(100, (totalElapsed / duration) * 100);
-        if (progressBarRef.current) {
-          progressBarRef.current.style.width = `${percent}%`;
-        }
-        if (totalElapsed < duration && audioRef.current && !audioRef.current.paused) {
-          animationFrameRef.current = requestAnimationFrame(animate);
-        } else if (totalElapsed >= duration) {
-          audioRef.current?.pause();
-        }
-      };
-      animationFrameRef.current = requestAnimationFrame(animate);
-    },
-    [audioRef, progressBarRef, clearProgress]
-  );
-
-  useEffect(() => {
-    return () => clearProgress();
-  }, [clearProgress]);
-
-  return { clearProgress, updateProgress };
-};
-
-// ----------------------------------------------------
-// 2) Sub-components
-// ----------------------------------------------------
-
-// PlaylistInput component: Collects a Spotify playlist URL.
-const PlaylistInput = ({ state, setState, startGame }) => (
-  <div className="space-y-6">
-    <div className="space-y-4">
-      <input
-        type="text"
-        placeholder="Enter Spotify playlist URL..."
-        value={state.playlistUrl}
-        onChange={(e) => setState((prev) => ({ ...prev, playlistUrl: e.target.value }))}
-        className="w-full px-4 py-3 rounded-lg bg-slate-700 border border-slate-600 focus:border-amber-400 focus:ring-2 focus:ring-amber-400/30 text-white placeholder-slate-400 transition-all"
-      />
-      <button
-        onClick={startGame}
-        className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-slate-900 font-semibold rounded-lg transition-colors"
-      >
-        Start Game
-      </button>
-    </div>
-    {state.feedback && <p className="text-red-400 text-sm">{state.feedback}</p>}
-  </div>
-);
-
-// GuessHistory component: Displays previous guesses/skips.
-const GuessHistory = ({ history }) => (
-  <div className="bg-slate-700/50 p-4 rounded-lg">
-    <h3 className="text-sm text-slate-400 mb-2">Previous guesses:</h3>
-    <div className="space-y-2">
-      {history.map((entry) => (
-        <div
-          key={entry.attempt}
-          className="flex items-center justify-between px-3 py-2 bg-slate-800 rounded-md"
-        >
-          <span className="text-sm text-slate-300">
-            {entry.type === 'skip' ? 'Skipped' : entry.value}
-          </span>
-          <span className="text-xs text-slate-500">Attempt {entry.attempt}</span>
-        </div>
-      ))}
-    </div>
-  </div>
-);
-
-// SongPreview component: Shows full song details once the answer is revealed.
-const SongPreview = ({ correctSong, audioRef, fullProgressBarRef }) => {
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const { clearProgress, updateProgress } = useAudioProgress(audioRef, fullProgressBarRef);
-
-  useEffect(() => {
-    const current = audioRef.current;
-    if (!current) return;
-    const handleTimeUpdate = () => {
-      setCurrentTime(current.currentTime);
-    };
-    current.addEventListener('timeupdate', handleTimeUpdate);
-    return () => current.removeEventListener('timeupdate', handleTimeUpdate);
-  }, [audioRef]);
-
-  const formatTime = (seconds) => {
-    if (!seconds || isNaN(seconds)) return '00:00';
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-  };
-
-  const togglePlayback = useCallback(() => {
-    if (!audioRef.current) return;
-    if (audioRef.current.paused) {
-      audioRef.current.play();
-      setIsPlaying(true);
-      if (audioRef.current.duration) {
-        updateProgress(audioRef.current.duration, audioRef.current.currentTime);
-      }
-    } else {
-      audioRef.current.pause();
-      setIsPlaying(false);
-      clearProgress();
-    }
-  }, [audioRef, updateProgress, clearProgress]);
-
-  useEffect(() => {
-    const current = audioRef.current;
-    if (!current) return;
-    const onEnded = () => {
-      setIsPlaying(false);
-      clearProgress();
-    };
-    current.addEventListener('ended', onEnded);
-    return () => current.removeEventListener('ended', onEnded);
-  }, [audioRef, clearProgress]);
-
-  return (
-    <div className="text-center space-y-6">
-      <div className="inline-block">
-        <img
-          src={correctSong.album_cover}
-          alt={correctSong.name}
-          className="w-48 h-48 rounded-xl object-cover mx-auto shadow-lg border border-slate-600"
-        />
-        <div className="mt-4 space-y-1">
-          <h2 className="text-xl font-semibold text-white">{correctSong.name}</h2>
-          <p className="text-slate-400">{correctSong.artist}</p>
-        </div>
-      </div>
-      <div className="bg-slate-700 p-4 rounded-lg space-y-4">
-        <div className="flex items-center justify-center gap-4">
-          <button
-            onClick={togglePlayback}
-            className="w-10 h-10 rounded-full bg-amber-500 hover:bg-amber-400 flex items-center justify-center transition-colors"
-          >
-            {isPlaying ? (
-              <svg className="w-5 h-5 fill-current text-slate-900" viewBox="0 0 24 24">
-                <path d="M6 4h4v16H6zm8 0h4v16h-4z" />
-              </svg>
-            ) : (
-              <svg className="w-5 h-5 fill-current text-slate-900" viewBox="0 0 24 24">
-                <path d="M8 5v14l11-7z" />
-              </svg>
-            )}
-          </button>
-          <div className="flex-1 space-y-2">
-            <div className="h-1.5 bg-slate-600 rounded-full overflow-hidden">
-              <div
-                ref={fullProgressBarRef}
-                className="h-full bg-amber-400 rounded-full transition-all duration-75"
-                style={{ width: '0%' }}
-              />
-            </div>
-            <div className="flex justify-between text-xs text-slate-400">
-              <span>{formatTime(currentTime)}</span>
-              <span>
-                -{formatTime((audioRef.current?.duration || 0) - currentTime)}
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// ----------------------------------------------------
-// 3) Main App Component
-// ----------------------------------------------------
 const App = () => {
   const [state, setState] = useState({
+    mode: 'playlist',
     playlistUrl: '',
     sessionId: null,
-    // Initially, songData holds only the preview URL.
     songData: null,
-    // Full list of tracks for autocomplete suggestions.
     recommendedSongs: [],
     gameStarted: false,
     snippetDuration: 1,
@@ -240,7 +53,7 @@ const App = () => {
       audioRef.current.currentTime = 0;
       progressBarRef.current.style.transition = 'none';
       progressBarRef.current.style.width = '0%';
-      progressBarRef.current.offsetWidth; // Force reflow
+      progressBarRef.current.offsetWidth;
       progressBarRef.current.style.transition = 'width 0.05s linear';
       audioRef.current.play().catch(console.error);
       snippetProgress.updateProgress(duration, 0);
@@ -248,7 +61,6 @@ const App = () => {
     [snippetProgress]
   );
 
-  // Increase attempt count and double snippet duration.
   const incrementGuess = () => {
     const newDuration = state.snippetDuration * 2;
     const newAttempt = state.attempt + 1;
@@ -270,21 +82,23 @@ const App = () => {
     }
   };
 
-  // Start game: POST /session returns sessionId and tracks; then GET /session returns preview details.
+  // Updated startGame to send the mode along with the playlist URL (if needed)
   const startGame = async () => {
-    if (!state.playlistUrl) {
+    if (state.mode === 'playlist' && !state.playlistUrl) {
       setState((prev) => ({ ...prev, feedback: 'Please enter a playlist URL.' }));
       return;
     }
     try {
-      // Create a new session.
+      const payload = { mode: state.mode };
+      if (state.mode === 'playlist') {
+        payload.playlist_url = state.playlistUrl;
+      }
       const sessionResponse = await axios.post(
         `${import.meta.env.VITE_API_URL}/session`,
-        { playlist_url: state.playlistUrl }
+        payload
       );
       const sessionId = sessionResponse.data.session_id;
       const tracks = sessionResponse.data.tracks;
-      // Now fetch session details to get the preview URL.
       const detailsResponse = await axios.get(`${import.meta.env.VITE_API_URL}/session/${sessionId}`);
       const sessionData = detailsResponse.data.session;
       const songData = { preview_url: sessionData.targetPreview };
@@ -308,15 +122,47 @@ const App = () => {
       console.error(error);
       setState((prev) => ({
         ...prev,
-        feedback: 'Error starting game. Check the playlist URL.',
+        feedback: 'Error starting game. Check your settings.',
       }));
     }
   };
 
-  // Handle a normal guess: POST /session/{sessionId}/guess with { guess }.
+  // Updated nextSong function that calls the /next endpoint.
+  // This function now works with both "playlist" and "random" modes.
+  const nextSong = async () => {
+    try {
+      const targetResponse = await axios.post(
+        `${import.meta.env.VITE_API_URL}/session/${state.sessionId}/next`
+      );
+      const targetTrack = targetResponse.data.track;
+      if (!targetTrack) {
+        setState((prev) => ({ ...prev, feedback: 'No preview available.' }));
+        return;
+      }
+      // Update the session state with the new target preview
+      const songData = { preview_url: targetTrack.preview_url };
+      setState((prev) => ({
+        ...prev,
+        songData,
+        snippetDuration: 1,
+        attempt: 0,
+        feedback: '',
+        guess: '',
+        correctGuess: false,
+        history: [],
+        correctSong: null,
+      }));
+      setInputValue('');
+      playSnippet(1);
+    } catch (error) {
+      console.error(error);
+      setState((prev) => ({ ...prev, feedback: 'Error loading next song.' }));
+    }
+  };
+
   const handleGuess = async (e) => {
     e.preventDefault();
-    if (!state.songData || (!state.guess && state.guess !== '')) return;
+    if (!state.songData || state.guess === undefined) return;
     try {
       const { data } = await axios.post(
         `${import.meta.env.VITE_API_URL}/session/${state.sessionId}/guess`,
@@ -336,7 +182,6 @@ const App = () => {
         { attempt: state.attempt + 1, type: 'guess', value: state.guess, correct: data.correct },
       ];
       if (data.correct) {
-        // Correct guess: update with full song details.
         setState((prev) => ({
           ...prev,
           feedback: 'Correct!',
@@ -345,7 +190,6 @@ const App = () => {
           history: newHistory,
         }));
       } else {
-        // Incorrect guess: update hint level if provided, then increment.
         setState((prev) => ({
           ...prev,
           feedback: data.hintLevel
@@ -361,7 +205,6 @@ const App = () => {
     }
   };
 
-  // Handle skip: POST /session/{sessionId}/guess with { skip: true }.
   const handleSkip = async () => {
     try {
       const { data } = await axios.post(
@@ -382,7 +225,6 @@ const App = () => {
         { attempt: state.attempt + 1, type: 'skip', value: 'Skipped' },
       ];
       if (data.correct) {
-        // Reveal answer if 5 attempts reached.
         setState((prev) => ({
           ...prev,
           feedback: 'Game over! The song has been revealed.',
@@ -406,37 +248,6 @@ const App = () => {
     }
   };
 
-  // Next song: POST /session/{sessionId}/next to update the preview.
-  const nextSong = async () => {
-    try {
-      const targetResponse = await axios.post(
-        `${import.meta.env.VITE_API_URL}/session/${state.sessionId}/next`
-      );
-      const targetTrack = targetResponse.data.track;
-      if (!targetTrack) {
-        setState((prev) => ({ ...prev, feedback: 'No preview available.' }));
-        return;
-      }
-      const songData = { preview_url: targetTrack.preview_url };
-      setState((prev) => ({
-        ...prev,
-        songData,
-        snippetDuration: 1,
-        attempt: 0,
-        feedback: '',
-        guess: '',
-        correctGuess: false,
-        history: [],
-        correctSong: null,
-      }));
-      setInputValue('');
-      playSnippet(1);
-    } catch (error) {
-      console.error(error);
-      setState((prev) => ({ ...prev, feedback: 'Error loading next song.' }));
-    }
-  };
-
   const handleSuggestionClick = (songName) => {
     setInputValue(songName);
     setState((prev) => ({ ...prev, guess: songName }));
@@ -450,7 +261,7 @@ const App = () => {
           Trackdle
         </h1>
         {!state.gameStarted ? (
-          <PlaylistInput state={state} setState={setState} startGame={startGame} />
+          <GameSetup state={state} setState={setState} startGame={startGame} />
         ) : (
           <>
             {!state.songData ? (
@@ -506,7 +317,7 @@ const App = () => {
                         }}
                         aria-autocomplete="list"
                         aria-controls="suggestion-list"
-                        className="w-full px-4 py-3 rounded-lg bg-slate-700 border border-slate-600 focus:border-amber-400 focus:ring-2 focus:ring-amber-400/30 text-white placeholder-slate-400 transition-all"
+                        className="w-full px-4 py-3 rounded-lg bg-slate-700 border border-slate-600 focus:border-amber-400 focus:ring-2 focus:ring-amber-400/30 text-white transition-all"
                       />
                       {showSuggestions && filteredSongs.length > 0 && (
                         <ul

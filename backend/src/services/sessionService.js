@@ -1,11 +1,9 @@
-// services/sessionService.js
 const Session = require('../models/sessionModel');
+const SongPool = require('../models/songPoolModel');
 const { fetchBasicPlaylistTracks } = require('./spotifyService');
 const { getDeezerPreview } = require('./deezerService');
 
-/**
- * Fisher-Yates Shuffle Algorithm
- */
+
 function shuffleArray(array) {
   for (let i = array.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -15,17 +13,50 @@ function shuffleArray(array) {
 }
 
 /**
- * Creates a new session for the given playlist URL.
- * Selects a target track that has a Deezer preview.
- * Returns an object containing the session document and the full list of tracks.
+ * Returns a list of random tracks from the SongPool collection.
+ * It uses MongoDB's $sample operator to pick a random set of songs.
  */
-async function createSession(playlist_url) {
-  const tracks = await fetchBasicPlaylistTracks(playlist_url);
+async function getRandomTracks() {
+  // Sample 10 random documents (adjust the size as needed)
+  const randomDocs = await SongPool.aggregate([{ $sample: { size: 100 } }]);
+  // Map the documents to track objects similar to fetchBasicPlaylistTracks output
+  return randomDocs.map(doc => ({
+    name: doc.song.title,
+    artist: doc.song.artist,
+    album_cover: doc.song.album_cover
+  }));
+}
+
+/**
+ * Creates a new session.
+ * If mode is 'playlist', uses the provided playlist URL and adds the songs to the SongPool (uniquely);
+ * if mode is 'random', fetches a list of random tracks from the SongPool.
+ * Returns an object containing the session document and the list of tracks.
+ */
+async function createSession(mode, playlist_url) {
+  let tracks;
+  if (mode === 'playlist') {
+    // Fetch tracks from the provided playlist URL
+    tracks = await fetchBasicPlaylistTracks(playlist_url);
+    // Upsert each track into SongPool to ensure uniqueness
+    for (const track of tracks) {
+      await SongPool.findOneAndUpdate(
+        { "song.title": track.name, "song.artist": track.artist },
+        { $setOnInsert: { song: { title: track.name, artist: track.artist, album_cover: track.album_cover } } },
+        { upsert: true, new: true }
+      );
+    }
+  } else if (mode === 'random') {
+    tracks = await getRandomTracks();
+  } else {
+    throw new Error("Invalid mode provided.");
+  }
+  
   if (!tracks.length) {
-    throw new Error("No tracks found in the playlist.");
+    throw new Error("No tracks found.");
   }
 
-  // Shuffle and pick the first track with a preview.
+  // Shuffle tracks and pick the first track with a valid preview.
   const shuffledTracks = shuffleArray([...tracks]);
   let target = null;
   for (const track of shuffledTracks) {
@@ -39,11 +70,12 @@ async function createSession(playlist_url) {
     throw new Error("No target track with a preview found.");
   }
 
-  // Create session document with full target info (which remains hidden)
+  // Create session document with mode and target info.
   const session = new Session({
-    mode: 'playlist',
+    mode,
     status: 'in-progress',
-    playlist_url,
+    // Include playlist_url only for playlist mode.
+    playlist_url: mode === 'playlist' ? playlist_url : undefined,
     targetPreview: target.preview_url,
     targetSong: {
       title: target.name,
@@ -66,19 +98,26 @@ async function getSessionById(session_id) {
 }
 
 /**
- * Updates a session with a new target track (for a new round).
+ * Updates a session with a new target track.
+ * For 'playlist' mode, uses the playlist URL;
+ * for 'random' mode, fetches a random track from the SongPool.
  */
 async function nextTarget(session_id) {
   const session = await getSessionById(session_id);
   if (!session) {
     throw new Error("Session not found.");
   }
-  if (!session.playlist_url) {
-    throw new Error("Session does not have an associated playlist URL.");
+  let tracks;
+  if (session.mode === 'playlist') {
+    if (!session.playlist_url) {
+      throw new Error("Session does not have an associated playlist URL.");
+    }
+    tracks = await fetchBasicPlaylistTracks(session.playlist_url);
+  } else if (session.mode === 'random') {
+    tracks = await getRandomTracks();
   }
-  const tracks = await fetchBasicPlaylistTracks(session.playlist_url);
   if (!tracks.length) {
-    throw new Error("No tracks found in the playlist.");
+    throw new Error("No tracks found.");
   }
   const shuffledTracks = shuffleArray([...tracks]);
   let newTarget = null;
@@ -93,11 +132,15 @@ async function nextTarget(session_id) {
     throw new Error("No track with a preview available.");
   }
   session.targetPreview = newTarget.preview_url;
-  session.targetSong = { title: newTarget.name, artist: newTarget.artist, album_cover: newTarget.album_cover };
+  session.targetSong = { 
+    title: newTarget.name, 
+    artist: newTarget.artist, 
+    album_cover: newTarget.album_cover 
+  };
   session.attempts = 0;
   session.hintLevel = 0;
   await session.save();
   return session;
 }
 
-module.exports = { createSession, getSessionById, nextTarget, shuffleArray };
+module.exports = { createSession, getSessionById, nextTarget };

@@ -15,7 +15,11 @@ const allowedOrigins = [
 function createApp() {
   const app = express();
 
-  app.use(morgan('combined'));
+  app.use(morgan(':method :url :status :res[content-length] - :response-time ms', {
+    stream: {
+      write: (message) => logger.info(message.trim()),
+    },
+  }));
 
   app.use(cors({
     origin: function (origin, callback) {
@@ -30,16 +34,12 @@ function createApp() {
 
   app.use(express.json({ limit: '5mb' }));
 
-  app.use((req, res, next) => {
-    logger.info(`Incoming request: ${req.method} ${req.url}`);
-    next();
-  });
-
+  // Removed the extra request logging middleware since Morgan now handles it.
   const mongoURI = process.env.MONGO_URI || 'mongodb://localhost:27017/trackdle';
   
   mongoose.connect(mongoURI)
-    .then(() => console.log('MongoDB connected'))
-    .catch(err => console.error('MongoDB connection error:', err));
+    .then(() => logger.info('MongoDB connected'))
+    .catch(err => logger.error('MongoDB connection error:', err));
   
   app.use('/', routes);
 
