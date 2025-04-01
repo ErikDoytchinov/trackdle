@@ -1,8 +1,23 @@
 const axios = require('axios');
 const logger = require('../config/logger');
+const NodeCache = require('node-cache');
 
 let spotifyTokenCache = null;
 let spotifyTokenExpiresAt = 0;
+
+const playlistCache = new NodeCache({ stdTTL: 600, checkperiod: 120 }); // TTL 10 minutes
+
+async function getCachedPlaylistTracks(url) {
+  let cachedTracks = playlistCache.get(url);
+  if (cachedTracks) {
+    return cachedTracks;
+  }
+
+  const tracks = await fetchBasicPlaylistTracks(url);
+  playlistCache.set(url, tracks);
+  return tracks;
+}
+
 
 /**
  * Get and cache Spotify API token.
@@ -89,5 +104,5 @@ async function fetchBasicPlaylistTracks(url) {
 
 module.exports = {
   getSpotifyToken,
-  fetchBasicPlaylistTracks,
+  getCachedPlaylistTracks,
 };
