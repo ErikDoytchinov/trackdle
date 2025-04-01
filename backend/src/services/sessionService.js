@@ -1,7 +1,8 @@
 const Session = require('../models/sessionModel');
 const SongPool = require('../models/songPoolModel');
-const { fetchBasicPlaylistTracks } = require('./spotifyService');
+const { getCachedPlaylistTracks } = require('./spotifyService');
 const { getDeezerPreview } = require('./deezerService');
+const User = require('../models/userModel');
 
 
 function shuffleArray(array) {
@@ -37,7 +38,7 @@ async function createSession(mode, playlist_url) {
   let tracks;
   if (mode === 'playlist') {
     // Fetch tracks from the provided playlist URL
-    tracks = await fetchBasicPlaylistTracks(playlist_url);
+    tracks = await getCachedPlaylistTracks(playlist_url);
     // Upsert each track into SongPool to ensure uniqueness
     for (const track of tracks) {
       await SongPool.findOneAndUpdate(
@@ -107,12 +108,17 @@ async function nextTarget(session_id) {
   if (!session) {
     throw new Error("Session not found.");
   }
+  if (session.status === 'completed') {
+    session.status = 'in-progress';
+    await session.save();
+  }
+
   let tracks;
   if (session.mode === 'playlist') {
     if (!session.playlist_url) {
       throw new Error("Session does not have an associated playlist URL.");
     }
-    tracks = await fetchBasicPlaylistTracks(session.playlist_url);
+    tracks = await getCachedPlaylistTracks(session.playlist_url);
   } else if (session.mode === 'random') {
     tracks = await getRandomTracks();
   }
@@ -143,4 +149,22 @@ async function nextTarget(session_id) {
   return session;
 }
 
-module.exports = { createSession, getSessionById, nextTarget };
+async function updateUserStats(userId, currentGameAttempts, currentGamePlaytime, wonGame) {
+  const user = await User.findById(userId);
+  if (!user) throw new Error("User not found");
+
+  user.gamesPlayed += 1;
+  user.totalAttempts = (user.totalAttempts || 0) + currentGameAttempts;
+  user.totalPlaytime = (user.totalPlaytime || 0) + currentGamePlaytime;
+  if (wonGame) {
+    user.correctGuesses += 1;
+  }
+
+  user.averageAttempts = user.totalAttempts / user.gamesPlayed;
+  user.winRate = (user.correctGuesses / user.gamesPlayed) * 100;
+
+  await user.save();
+  return user;
+}
+
+module.exports = { createSession, getSessionById, nextTarget, updateUserStats };

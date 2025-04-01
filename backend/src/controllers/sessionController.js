@@ -1,5 +1,6 @@
+// controllers/sessionController.js
 const logger = require('../config/logger');
-const { createSession, getSessionById, nextTarget } = require('../services/sessionService');
+const { createSession, getSessionById, nextTarget, updateUserStats } = require('../services/sessionService');
 
 /**
  * POST /session
@@ -7,15 +8,18 @@ const { createSession, getSessionById, nextTarget } = require('../services/sessi
  */
 async function postSession(req, res) {
   try {
-    // Read mode and playlist_url from the request; default mode to 'playlist'
     const { mode = 'playlist', playlist_url } = req.body;
     if (mode === 'playlist' && !playlist_url) {
       return res.status(400).json({ error: "Missing playlist URL" });
     }
     logger.info(`Creating new session with mode: ${mode}${playlist_url ? ` for playlist: ${playlist_url}` : ''}`);
-    // createSession now accepts mode and (optionally) playlist_url.
     const { session, tracks } = await createSession(mode, playlist_url);
     logger.info(`Created new session with ID: ${session._id}`);
+    // If an authenticated user exists, update the session's userId.
+    if(req.user) {
+      session.userId = req.user._id;
+      await session.save();
+    }
     res.json({ session_id: session._id, tracks });
   } catch (err) {
     logger.error(`Error creating session: ${err.message}`);
@@ -25,7 +29,7 @@ async function postSession(req, res) {
 
 /**
  * GET /session/:session_id
- * Returns session details including only the preview.
+ * Returns session details (with the targetSong removed for privacy).
  */
 async function getSession(req, res) {
   try {
@@ -39,7 +43,6 @@ async function getSession(req, res) {
       logger.warn("Session not found.");
       return res.status(404).json({ error: "Session not found." });
     }
-    // Remove targetSong so the frontend sees only the preview.
     const sessionObj = session.toObject();
     delete sessionObj.targetSong;
     logger.info(`Fetched session with ID: ${session_id}`);
@@ -50,6 +53,10 @@ async function getSession(req, res) {
   }
 }
 
+/**
+ * POST /session/:session_id/guess
+ * Processes a guess (or skip) for the session and updates user stats if authenticated.
+ */
 async function postGuess(req, res) {
   try {
     const { session_id } = req.params;
@@ -61,24 +68,32 @@ async function postGuess(req, res) {
     if (!session) {
       return res.status(404).json({ error: "Session not found" });
     }
+    // Calculate playtime using session.created_at (converted to Date) as the start time.
+    const playtimeSeconds = (Date.now() - new Date(session.created_at)) / 1000;
+    
     if (skip) {
       session.attempts += 1;
       session.hintLevel += 1;
       await session.save();
       if (session.attempts >= 5) {
-        // Reveal answer after 5 attempts/skips.
         const songInfo = {
           name: session.targetSong.title,
           artist: session.targetSong.artist,
           album_cover: session.targetSong.album_cover,
           preview_url: session.targetPreview
         };
+        // Update user stats with wonGame set to false.
+        if (req.user) {
+          await updateUserStats(req.user._id, session.attempts, playtimeSeconds, false);
+        }
+        session.status = 'completed';
+        await session.save();
         return res.json({ correct: true, song: songInfo, skipped: true });
       } else {
         return res.json({ correct: false, skip: true, hintLevel: session.hintLevel });
       }
     } else {
-      // Process a normal guess
+      // Process a normal guess.
       const correctTitle = session.targetSong.title.toLowerCase().trim();
       const userGuess = guess.toLowerCase().trim();
       if (userGuess === correctTitle) {
@@ -88,6 +103,12 @@ async function postGuess(req, res) {
           album_cover: session.targetSong.album_cover,
           preview_url: session.targetPreview
         };
+        // Update user stats with wonGame set to true.
+        if (req.user) {
+          await updateUserStats(req.user._id, session.attempts, playtimeSeconds, true);
+        }
+        session.status = 'completed';
+        await session.save();
         return res.json({ correct: true, song: songInfo });
       } else {
         session.attempts += 1;
@@ -99,6 +120,11 @@ async function postGuess(req, res) {
             album_cover: session.targetSong.album_cover,
             preview_url: session.targetPreview
           };
+          if (req.user) {
+            await updateUserStats(req.user._id, session.attempts, playtimeSeconds, false);
+          }
+          session.status = 'completed';
+          await session.save();
           return res.json({ correct: true, song: songInfo });
         }
         return res.json({ correct: false, hintLevel: session.hintLevel });
@@ -112,7 +138,7 @@ async function postGuess(req, res) {
 
 /**
  * POST /session/:session_id/next
- * Updates the session with a new target track and returns its preview.
+ * Updates the session with a new target track.
  */
 async function postNextTarget(req, res) {
   try {
