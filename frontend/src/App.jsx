@@ -1,10 +1,11 @@
-import React, { useState, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import axios from 'axios';
 import debounce from 'lodash.debounce';
 import GameSetup from './components/GameSetup';
 import GuessHistory from './components/GuessHistory';
 import SongPreview from './components/SongPreview';
 import useAudioProgress from './hooks/useAudioProgress';
+import AuthProfile from './components/AuthProfile';
 
 const App = () => {
   const [state, setState] = useState({
@@ -22,14 +23,43 @@ const App = () => {
     history: [],
     correctSong: null,
   });
+  
   const [inputValue, setInputValue] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [activeSuggestion, setActiveSuggestion] = useState(0);
+  const [showAuth, setShowAuth] = useState(false);
+  const [user, setUser] = useState(null);
+  const [stats, setStats] = useState({
+    gamesPlayed: 0,
+    correctGuesses: 0,
+    averageAttempts: 0,
+  });
 
   const audioRef = useRef(null);
   const progressBarRef = useRef(null);
   const maxAttempts = 5;
   const snippetProgress = useAudioProgress(audioRef, progressBarRef);
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      const token = localStorage.getItem('token');
+      if (token) {
+        try {
+          const response = await axios.get(`${import.meta.env.VITE_API_URL}/auth/me`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          setUser(response.data.user);
+          const statsResponse = await axios.get(`${import.meta.env.VITE_API_URL}/user/stats`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          setStats(statsResponse.data);
+        } catch (err) {
+          localStorage.removeItem('token');
+        }
+      }
+    };
+    fetchUser();
+  }, []);
 
   const debouncedSetGuess = useCallback(
     debounce((value) => {
@@ -82,7 +112,6 @@ const App = () => {
     }
   };
 
-  // Updated startGame to send the mode along with the playlist URL (if needed)
   const startGame = async () => {
     if (state.mode === 'playlist' && !state.playlistUrl) {
       setState((prev) => ({ ...prev, feedback: 'Please enter a playlist URL.' }));
@@ -93,9 +122,14 @@ const App = () => {
       if (state.mode === 'playlist') {
         payload.playlist_url = state.playlistUrl;
       }
+
+      const token = localStorage.getItem('token');
+      const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
+
       const sessionResponse = await axios.post(
         `${import.meta.env.VITE_API_URL}/session`,
-        payload
+        payload, 
+        config
       );
       const sessionId = sessionResponse.data.session_id;
       const tracks = sessionResponse.data.tracks;
@@ -127,19 +161,28 @@ const App = () => {
     }
   };
 
-  // Updated nextSong function that calls the /next endpoint.
-  // This function now works with both "playlist" and "random" modes.
   const nextSong = async () => {
     try {
+      // Retrieve token and build axios config
+      const token = localStorage.getItem('token');
+      const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
+      
       const targetResponse = await axios.post(
-        `${import.meta.env.VITE_API_URL}/session/${state.sessionId}/next`
+        `${import.meta.env.VITE_API_URL}/session/${state.sessionId}/next`,
+        {},
+        config
       );
       const targetTrack = targetResponse.data.track;
       if (!targetTrack) {
         setState((prev) => ({ ...prev, feedback: 'No preview available.' }));
         return;
       }
-      // Update the session state with the new target preview
+      if (user) {
+        const statsResponse = await axios.get(`${import.meta.env.VITE_API_URL}/user/stats`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        setStats(statsResponse.data);
+      }
       const songData = { preview_url: targetTrack.preview_url };
       setState((prev) => ({
         ...prev,
@@ -164,9 +207,14 @@ const App = () => {
     e.preventDefault();
     if (!state.songData || state.guess === undefined) return;
     try {
+      // Retrieve token and build axios config
+      const token = localStorage.getItem('token');
+      const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
+      
       const { data } = await axios.post(
         `${import.meta.env.VITE_API_URL}/session/${state.sessionId}/guess`,
-        { guess: state.guess }
+        { guess: state.guess },
+        config
       );
       snippetProgress.clearProgress();
       if (audioRef.current) {
@@ -207,9 +255,14 @@ const App = () => {
 
   const handleSkip = async () => {
     try {
+      // Retrieve token and build axios config
+      const token = localStorage.getItem('token');
+      const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
+      
       const { data } = await axios.post(
         `${import.meta.env.VITE_API_URL}/session/${state.sessionId}/guess`,
-        { skip: true }
+        { skip: true },
+        config
       );
       snippetProgress.clearProgress();
       if (audioRef.current) {
@@ -255,8 +308,53 @@ const App = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 flex items-center justify-center p-4 overflow-hidden">
-      <div className="w-full max-w-lg bg-slate-800 rounded-2xl shadow-xl p-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 flex items-center justify-center p-4">
+      <button
+        onClick={() => setShowAuth(true)}
+        className="fixed top-4 right-4 p-2.5 rounded-full bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white transition-all duration-200 shadow-sm hover:shadow-md z-50 group"
+      >
+        {user ? (
+          <svg 
+            xmlns="http://www.w3.org/2000/svg" 
+            className="w-5 h-5 group-hover:scale-110 transition-transform"
+            fill="none" 
+            viewBox="0 0 24 24" 
+            stroke="currentColor"
+          >
+            <path 
+              strokeLinecap="round" 
+              strokeLinejoin="round" 
+              strokeWidth={2} 
+              d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" 
+            />
+          </svg>
+        ) : (
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            className="w-5 h-5 group-hover:scale-110 transition-transform"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+            />
+          </svg>
+        )}
+      </button>
+      {showAuth && (
+        <AuthProfile 
+          user={user}
+          setUser={setUser}
+          stats={stats}
+          onClose={() => setShowAuth(false)}
+        />
+      )}
+
+      <div className="w-full max-w-lg bg-slate-800 rounded-2xl shadow-xl p-6 relative z-10">
         <h1 className="text-3xl font-bold text-center mb-8 text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-400">
           Trackdle
         </h1>
@@ -322,7 +420,7 @@ const App = () => {
                       {showSuggestions && filteredSongs.length > 0 && (
                         <ul
                           id="suggestion-list"
-                          className="absolute z-10 w-full mt-2 bg-slate-700 rounded-lg overflow-hidden shadow-lg max-h-48 overflow-y-auto"
+                          className="absolute z-20 w-full mt-2 bg-slate-700 rounded-lg overflow-hidden shadow-lg max-h-48 overflow-y-auto"
                           role="listbox"
                         >
                           {filteredSongs.map((song, index) => (
