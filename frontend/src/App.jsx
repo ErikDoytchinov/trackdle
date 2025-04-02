@@ -23,7 +23,6 @@ const App = () => {
     history: [],
     correctSong: null,
   });
-  
   const [inputValue, setInputValue] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [activeSuggestion, setActiveSuggestion] = useState(0);
@@ -40,26 +39,48 @@ const App = () => {
   const maxAttempts = 5;
   const snippetProgress = useAudioProgress(audioRef, progressBarRef);
 
+  // Helper to get axios configuration for authenticated requests
+  const getAuthConfig = useCallback(() => {
+    const token = localStorage.getItem('token');
+    return token ? { headers: { Authorization: `Bearer ${token}` } } : {};
+  }, []);
+
+  // Fetch user info and stats on component mount
   useEffect(() => {
-    const fetchUser = async () => {
+    const fetchUserAndStats = async () => {
       const token = localStorage.getItem('token');
       if (token) {
         try {
-          const response = await axios.get(`${import.meta.env.VITE_API_URL}/auth/me`, {
-            headers: { Authorization: `Bearer ${token}` }
-          });
-          setUser(response.data.user);
-          const statsResponse = await axios.get(`${import.meta.env.VITE_API_URL}/user/stats`, {
-            headers: { Authorization: `Bearer ${token}` }
-          });
+          const userResponse = await axios.get(
+            `${import.meta.env.VITE_API_URL}/auth/me`,
+            getAuthConfig()
+          );
+          setUser(userResponse.data.user);
+          const statsResponse = await axios.get(
+            `${import.meta.env.VITE_API_URL}/user/stats`,
+            getAuthConfig()
+          );
           setStats(statsResponse.data);
         } catch (err) {
           localStorage.removeItem('token');
         }
       }
     };
-    fetchUser();
-  }, []);
+    fetchUserAndStats();
+  }, [getAuthConfig]);
+
+  // Function to refetch stats when profile icon is clicked
+  const fetchStats = async () => {
+    try {
+      const statsResponse = await axios.get(
+        `${import.meta.env.VITE_API_URL}/user/stats`,
+        getAuthConfig()
+      );
+      setStats(statsResponse.data);
+    } catch (err) {
+      console.error('Error fetching stats:', err);
+    }
+  };
 
   const debouncedSetGuess = useCallback(
     debounce((value) => {
@@ -91,6 +112,7 @@ const App = () => {
     [snippetProgress]
   );
 
+  // This helper now only increases the attempt count and snippet duration.
   const incrementGuess = () => {
     const newDuration = state.snippetDuration * 2;
     const newAttempt = state.attempt + 1;
@@ -101,15 +123,7 @@ const App = () => {
       guess: '',
     }));
     setInputValue('');
-    if (newAttempt < maxAttempts) {
-      playSnippet(newDuration);
-    } else {
-      setState((prev) => ({
-        ...prev,
-        feedback: `Game over! The correct song was not guessed.`,
-        correctGuess: true,
-      }));
-    }
+    playSnippet(newDuration);
   };
 
   const startGame = async () => {
@@ -122,18 +136,16 @@ const App = () => {
       if (state.mode === 'playlist') {
         payload.playlist_url = state.playlistUrl;
       }
-
-      const token = localStorage.getItem('token');
-      const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
-
       const sessionResponse = await axios.post(
         `${import.meta.env.VITE_API_URL}/session`,
-        payload, 
-        config
+        payload,
+        getAuthConfig()
       );
       const sessionId = sessionResponse.data.session_id;
       const tracks = sessionResponse.data.tracks;
-      const detailsResponse = await axios.get(`${import.meta.env.VITE_API_URL}/session/${sessionId}`);
+      const detailsResponse = await axios.get(
+        `${import.meta.env.VITE_API_URL}/session/${sessionId}`
+      );
       const sessionData = detailsResponse.data.session;
       const songData = { preview_url: sessionData.targetPreview };
       setState((prev) => ({
@@ -163,25 +175,15 @@ const App = () => {
 
   const nextSong = async () => {
     try {
-      // Retrieve token and build axios config
-      const token = localStorage.getItem('token');
-      const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
-      
       const targetResponse = await axios.post(
         `${import.meta.env.VITE_API_URL}/session/${state.sessionId}/next`,
         {},
-        config
+        getAuthConfig()
       );
       const targetTrack = targetResponse.data.track;
       if (!targetTrack) {
         setState((prev) => ({ ...prev, feedback: 'No preview available.' }));
         return;
-      }
-      if (user) {
-        const statsResponse = await axios.get(`${import.meta.env.VITE_API_URL}/user/stats`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        setStats(statsResponse.data);
       }
       const songData = { preview_url: targetTrack.preview_url };
       setState((prev) => ({
@@ -207,14 +209,10 @@ const App = () => {
     e.preventDefault();
     if (!state.songData || state.guess === undefined) return;
     try {
-      // Retrieve token and build axios config
-      const token = localStorage.getItem('token');
-      const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
-      
       const { data } = await axios.post(
         `${import.meta.env.VITE_API_URL}/session/${state.sessionId}/guess`,
         { guess: state.guess },
-        config
+        getAuthConfig()
       );
       snippetProgress.clearProgress();
       if (audioRef.current) {
@@ -227,25 +225,47 @@ const App = () => {
       }
       const newHistory = [
         ...state.history,
-        { attempt: state.attempt + 1, type: 'guess', value: state.guess, correct: data.correct },
+        {
+          attempt: state.attempt + 1,
+          type: 'guess',
+          value: state.guess,
+          correct: data.correct,
+        },
       ];
+
+      // If the backend signals that the game is over (correct song returned)
       if (data.correct) {
         setState((prev) => ({
           ...prev,
-          feedback: 'Correct!',
+          feedback: data.skipped
+            ? 'Game over! The correct song has been revealed.'
+            : 'Correct!',
           correctGuess: true,
           correctSong: data.song,
+          songData: { preview_url: data.song.preview_url },
           history: newHistory,
         }));
       } else {
-        setState((prev) => ({
-          ...prev,
-          feedback: data.hintLevel
-            ? `Hint level increased to ${data.hintLevel}.`
-            : 'Incorrect. Try again!',
-          history: newHistory,
-        }));
-        incrementGuess();
+        // If this guess was incorrect and we're at our last attempt, update state with song data from backend.
+        if (state.attempt + 1 >= maxAttempts) {
+          setState((prev) => ({
+            ...prev,
+            feedback: 'Game over! The correct song was not guessed.',
+            correctGuess: true,
+            correctSong: data.song, // ensure the correct song info is saved
+            songData: { preview_url: data.song.preview_url }, // update the preview URL
+            history: newHistory,
+          }));
+        } else {
+          setState((prev) => ({
+            ...prev,
+            feedback: data.hintLevel
+              ? `Hint level increased to ${data.hintLevel}.`
+              : 'Incorrect. Try again!',
+            history: newHistory,
+          }));
+          incrementGuess();
+        }
       }
     } catch (error) {
       console.error(error);
@@ -255,14 +275,10 @@ const App = () => {
 
   const handleSkip = async () => {
     try {
-      // Retrieve token and build axios config
-      const token = localStorage.getItem('token');
-      const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
-      
       const { data } = await axios.post(
         `${import.meta.env.VITE_API_URL}/session/${state.sessionId}/guess`,
         { skip: true },
-        config
+        getAuthConfig()
       );
       snippetProgress.clearProgress();
       if (audioRef.current) {
@@ -283,17 +299,29 @@ const App = () => {
           feedback: 'Game over! The song has been revealed.',
           correctGuess: true,
           correctSong: data.song,
+          songData: { preview_url: data.song.preview_url },
           history: newHistory,
         }));
       } else {
-        setState((prev) => ({
-          ...prev,
-          feedback: data.hintLevel
-            ? `Hint level increased to ${data.hintLevel}.`
-            : 'Skipped.',
-          history: newHistory,
-        }));
-        incrementGuess();
+        if (state.attempt + 1 >= maxAttempts) {
+          setState((prev) => ({
+            ...prev,
+            feedback: 'Game over! The correct song was not guessed.',
+            correctGuess: true,
+            correctSong: data.song,
+            songData: { preview_url: data.song.preview_url },
+            history: newHistory,
+          }));
+        } else {
+          setState((prev) => ({
+            ...prev,
+            feedback: data.hintLevel
+              ? `Hint level increased to ${data.hintLevel}.`
+              : 'Skipped.',
+            history: newHistory,
+          }));
+          incrementGuess();
+        }
       }
     } catch (error) {
       console.error(error);
@@ -307,25 +335,34 @@ const App = () => {
     setShowSuggestions(false);
   };
 
+  // Handle profile icon click:
+  // If user is logged in, fetch stats before opening the auth modal.
+  const handleProfileClick = async () => {
+    if (user) {
+      await fetchStats();
+    }
+    setShowAuth(true);
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 flex items-center justify-center p-4">
       <button
-        onClick={() => setShowAuth(true)}
+        onClick={handleProfileClick}
         className="fixed top-4 right-4 p-2.5 rounded-full bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white transition-all duration-200 shadow-sm hover:shadow-md z-50 group"
       >
         {user ? (
-          <svg 
-            xmlns="http://www.w3.org/2000/svg" 
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
             className="w-5 h-5 group-hover:scale-110 transition-transform"
-            fill="none" 
-            viewBox="0 0 24 24" 
+            fill="none"
+            viewBox="0 0 24 24"
             stroke="currentColor"
           >
-            <path 
-              strokeLinecap="round" 
-              strokeLinejoin="round" 
-              strokeWidth={2} 
-              d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" 
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
             />
           </svg>
         ) : (
@@ -346,14 +383,13 @@ const App = () => {
         )}
       </button>
       {showAuth && (
-        <AuthProfile 
+        <AuthProfile
           user={user}
           setUser={setUser}
           stats={stats}
           onClose={() => setShowAuth(false)}
         />
       )}
-
       <div className="w-full max-w-lg bg-slate-800 rounded-2xl shadow-xl p-6 relative z-10">
         <h1 className="text-3xl font-bold text-center mb-8 text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-400">
           Trackdle
@@ -384,7 +420,10 @@ const App = () => {
                     </div>
                     <audio ref={audioRef} src={state.songData.preview_url} preload="auto" />
                     <div className="h-1.5 bg-slate-700 rounded-full overflow-hidden">
-                      <div ref={progressBarRef} className="h-full bg-amber-400 rounded-full transition-all duration-75" />
+                      <div
+                        ref={progressBarRef}
+                        className="h-full bg-amber-400 rounded-full transition-all duration-75"
+                      />
                     </div>
                     <form onSubmit={handleGuess} className="relative">
                       <input
@@ -428,7 +467,9 @@ const App = () => {
                               key={song.id}
                               onClick={() => handleSuggestionClick(song.name)}
                               className={`px-4 py-2 cursor-pointer border-t border-slate-600 first:border-t-0 transition-colors ${
-                                index === activeSuggestion ? 'bg-slate-600' : 'hover:bg-slate-600'
+                                index === activeSuggestion
+                                  ? 'bg-slate-600'
+                                  : 'hover:bg-slate-600'
                               }`}
                               role="option"
                               aria-selected={index === activeSuggestion}
@@ -471,7 +512,11 @@ const App = () => {
                     {state.correctSong && (
                       <>
                         <audio ref={audioRef} src={state.songData.preview_url} preload="auto" />
-                        <SongPreview correctSong={state.correctSong} audioRef={audioRef} fullProgressBarRef={progressBarRef} />
+                        <SongPreview
+                          correctSong={state.correctSong}
+                          audioRef={audioRef}
+                          fullProgressBarRef={progressBarRef}
+                        />
                         <button
                           onClick={nextSong}
                           className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-slate-900 font-semibold rounded-lg transition-colors"

@@ -153,7 +153,7 @@ async function postGuess(req, res) {
           }
           session.status = 'completed';
           await session.save();
-          return res.json({ correct: true, song: songInfo });
+          return res.json({ correct: false, song: songInfo, gameOver: true });
         }
         return res.json({ correct: false, hintLevel: session.hintLevel });
       }
