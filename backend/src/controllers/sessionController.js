@@ -1,6 +1,11 @@
 // controllers/sessionController.js
 const logger = require('../config/logger');
-const { createSession, getSessionById, nextTarget, updateUserStats } = require('../services/sessionService');
+const {
+  createSession,
+  getSessionById,
+  nextTarget,
+  updateUserStats,
+} = require('../services/sessionService');
 
 /**
  * POST /session
@@ -10,13 +15,15 @@ async function postSession(req, res) {
   try {
     const { mode = 'playlist', playlist_url } = req.body;
     if (mode === 'playlist' && !playlist_url) {
-      return res.status(400).json({ error: "Missing playlist URL" });
+      return res.status(400).json({ error: 'Missing playlist URL' });
     }
-    logger.info(`Creating new session with mode: ${mode}${playlist_url ? ` for playlist: ${playlist_url}` : ''}`);
+    logger.info(
+      `Creating new session with mode: ${mode}${playlist_url ? ` for playlist: ${playlist_url}` : ''}`
+    );
     const { session, tracks } = await createSession(mode, playlist_url);
     logger.info(`Created new session with ID: ${session._id}`);
     // If an authenticated user exists, update the session's userId.
-    if(req.user) {
+    if (req.user) {
       session.userId = req.user._id;
       await session.save();
     }
@@ -35,13 +42,13 @@ async function getSession(req, res) {
   try {
     const { session_id } = req.params;
     if (!session_id) {
-      return res.status(400).json({ error: "Missing session ID" });
+      return res.status(400).json({ error: 'Missing session ID' });
     }
     logger.info(`Fetching session details for ID: ${session_id}`);
     const session = await getSessionById(session_id);
     if (!session) {
-      logger.warn("Session not found.");
-      return res.status(404).json({ error: "Session not found." });
+      logger.warn('Session not found.');
+      return res.status(404).json({ error: 'Session not found.' });
     }
     const sessionObj = session.toObject();
     delete sessionObj.targetSong;
@@ -62,15 +69,17 @@ async function postGuess(req, res) {
     const { session_id } = req.params;
     const { guess, skip } = req.body;
     if (!session_id || (guess === undefined && !skip)) {
-      return res.status(400).json({ error: "Missing session ID or guess/skip flag" });
+      return res
+        .status(400)
+        .json({ error: 'Missing session ID or guess/skip flag' });
     }
     const session = await getSessionById(session_id);
     if (!session) {
-      return res.status(404).json({ error: "Session not found" });
+      return res.status(404).json({ error: 'Session not found' });
     }
     // Calculate playtime using session.created_at (converted to Date) as the start time.
     const playtimeSeconds = (Date.now() - new Date(session.created_at)) / 1000;
-    
+
     if (skip) {
       session.attempts += 1;
       session.hintLevel += 1;
@@ -80,17 +89,26 @@ async function postGuess(req, res) {
           name: session.targetSong.title,
           artist: session.targetSong.artist,
           album_cover: session.targetSong.album_cover,
-          preview_url: session.targetPreview
+          preview_url: session.targetPreview,
         };
         // Update user stats with wonGame set to false.
         if (req.user) {
-          await updateUserStats(req.user._id, session.attempts, playtimeSeconds, false);
+          await updateUserStats(
+            req.user._id,
+            session.attempts,
+            playtimeSeconds,
+            false
+          );
         }
         session.status = 'completed';
         await session.save();
         return res.json({ correct: true, song: songInfo, skipped: true });
       } else {
-        return res.json({ correct: false, skip: true, hintLevel: session.hintLevel });
+        return res.json({
+          correct: false,
+          skip: true,
+          hintLevel: session.hintLevel,
+        });
       }
     } else {
       // Process a normal guess.
@@ -101,11 +119,16 @@ async function postGuess(req, res) {
           name: session.targetSong.title,
           artist: session.targetSong.artist,
           album_cover: session.targetSong.album_cover,
-          preview_url: session.targetPreview
+          preview_url: session.targetPreview,
         };
         // Update user stats with wonGame set to true.
         if (req.user) {
-          await updateUserStats(req.user._id, session.attempts, playtimeSeconds, true);
+          await updateUserStats(
+            req.user._id,
+            session.attempts,
+            playtimeSeconds,
+            true
+          );
         }
         session.status = 'completed';
         await session.save();
@@ -118,10 +141,15 @@ async function postGuess(req, res) {
             name: session.targetSong.title,
             artist: session.targetSong.artist,
             album_cover: session.targetSong.album_cover,
-            preview_url: session.targetPreview
+            preview_url: session.targetPreview,
           };
           if (req.user) {
-            await updateUserStats(req.user._id, session.attempts, playtimeSeconds, false);
+            await updateUserStats(
+              req.user._id,
+              session.attempts,
+              playtimeSeconds,
+              false
+            );
           }
           session.status = 'completed';
           await session.save();
@@ -144,11 +172,15 @@ async function postNextTarget(req, res) {
   try {
     const { session_id } = req.params;
     if (!session_id) {
-      return res.status(400).json({ error: "Missing session ID" });
+      return res.status(400).json({ error: 'Missing session ID' });
     }
-    logger.info(`Updating session with a new target for session ID: ${session_id}`);
+    logger.info(
+      `Updating session with a new target for session ID: ${session_id}`
+    );
     const session = await nextTarget(session_id);
-    logger.info(`Updated session with new target for session ID: ${session_id}`);
+    logger.info(
+      `Updated session with new target for session ID: ${session_id}`
+    );
     res.json({ track: { preview_url: session.targetPreview } });
   } catch (err) {
     logger.error(`Error updating session: ${err.message}`);

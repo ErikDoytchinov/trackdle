@@ -1,6 +1,11 @@
 const express = require('express');
 const router = express.Router();
-const { postSession, getSession, postGuess, postNextTarget } = require('../controllers/sessionController');
+const {
+  postSession,
+  getSession,
+  postGuess,
+  postNextTarget,
+} = require('../controllers/sessionController');
 const { optionalProtect } = require('../../middleware/optionalMiddleware');
 
 router.post('/', optionalProtect, postSession);

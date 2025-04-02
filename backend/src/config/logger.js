@@ -10,18 +10,12 @@ const devFormat = combine(
   })
 );
 
-const prodFormat = combine(
-  timestamp(),
-  errors({ stack: true }),
-  json()
-);
+const prodFormat = combine(timestamp(), errors({ stack: true }), json());
 
 const logger = createLogger({
   level: process.env.LOG_LEVEL || 'info',
   format: process.env.NODE_ENV === 'production' ? prodFormat : devFormat,
-  transports: [
-    new transports.Console({ handleExceptions: true }),
-  ],
+  transports: [new transports.Console({ handleExceptions: true })],
   exitOnError: false,
 });
 

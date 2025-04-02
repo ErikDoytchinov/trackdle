@@ -18,7 +18,6 @@ async function getCachedPlaylistTracks(url) {
   return tracks;
 }
 
-
 /**
  * Get and cache Spotify API token.
  */
@@ -30,16 +29,16 @@ async function getSpotifyToken() {
   }
 
   try {
-    logger.info("Requesting Spotify API token...");
+    logger.info('Requesting Spotify API token...');
     const response = await axios.post(
-      "https://accounts.spotify.com/api/token",
-      new URLSearchParams({ grant_type: "client_credentials" }),
+      'https://accounts.spotify.com/api/token',
+      new URLSearchParams({ grant_type: 'client_credentials' }),
       {
         headers: {
           Authorization: `Basic ${Buffer.from(
             `${process.env.CLIENT_ID}:${process.env.CLIENT_SECRET}`
-          ).toString("base64")}`,
-          "Content-Type": "application/x-www-form-urlencoded",
+          ).toString('base64')}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
         },
       }
     );
@@ -51,11 +50,11 @@ async function getSpotifyToken() {
     spotifyTokenCache = token;
     spotifyTokenExpiresAt = now + expiresIn * 1000 - 60000;
 
-    logger.info("Spotify API token retrieved successfully.");
+    logger.info('Spotify API token retrieved successfully.');
     return token;
   } catch (err) {
     logger.error(`Error getting Spotify token: ${err.message}`);
-    throw new Error("Failed to retrieve Spotify token.");
+    throw new Error('Failed to retrieve Spotify token.');
   }
 }
 
@@ -65,9 +64,9 @@ async function getSpotifyToken() {
  */
 async function fetchBasicPlaylistTracks(url) {
   // Extract playlist ID from URL: expects .../playlist/{playlistId}?...
-  const parts = url.split("/playlist/");
-  if (parts.length < 2) throw new Error("Invalid playlist URL format");
-  const playlistId = parts[1].split("?")[0];
+  const parts = url.split('/playlist/');
+  if (parts.length < 2) throw new Error('Invalid playlist URL format');
+  const playlistId = parts[1].split('?')[0];
 
   const token = await getSpotifyToken();
   const baseUrl = `https://api.spotify.com/v1/playlists/${playlistId}/tracks`;
@@ -88,7 +87,7 @@ async function fetchBasicPlaylistTracks(url) {
           return {
             id: item.track.id,
             name: item.track.name,
-            artist: item.track.artists.map((a) => a.name).join(", "),
+            artist: item.track.artists.map((a) => a.name).join(', '),
             album_cover: item.track.album.images[0]?.url,
           };
         })

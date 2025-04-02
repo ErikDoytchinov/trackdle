@@ -11,7 +11,7 @@ exports.getStats = async (req, res) => {
       correctGuesses: user.correctGuesses,
       averageAttempts: user.averageAttempts,
       totalPlaytime: user.totalPlaytime,
-      winRate: user.winRate
+      winRate: user.winRate,
     });
   } catch (err) {
     res.status(500).json({ message: err.message });

@@ -9,7 +9,7 @@ const userSchema = new mongoose.Schema({
   averageAttempts: { type: Number, default: 0 },
   totalAttempts: { type: Number, default: 0 },
   totalPlaytime: { type: Number, default: 0 },
-  winRate: { type: Number, default: 0 }
+  winRate: { type: Number, default: 0 },
 });
 
 // Hash password before saving

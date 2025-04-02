@@ -16,35 +16,50 @@ const mongoose = require('mongoose');
 //     "userId": "user123"
 
 const sessionSchema = new mongoose.Schema({
-    mode: { 
-        type: String, required: true, enum: ['playlist', 'random']
+  mode: {
+    type: String,
+    required: true,
+    enum: ['playlist', 'random'],
+  },
+  status: {
+    type: String,
+    required: true,
+    enum: ['in-progress', 'completed'],
+  },
+  playlist_url: {
+    type: String,
+    required: function () {
+      return this.mode === 'playlist';
     },
-    status: { 
-        type: String, required: true, enum: ['in-progress', 'completed']
-    },
-    playlist_url: { 
-        type: String, required: function() { return this.mode === 'playlist'; }
-    },
-    targetPreview: { 
-        type: String, required: false
-    },
-    targetSong: {
-        title: { type: String, required: false },
-        artist: { type: String, required: false},
-        album_cover: { type: String, required: false},
-    },
-    attempts: {
-        type: Number, required: true, default: 0,
-    },
-    hintLevel: {
-        type: Number, required: true, default: 0,
-    },
-    created_at: {
-        type: Date, required: true, default: Date.now,
-    },
-    userId: {
-        type: String,required: true,
-    }
+  },
+  targetPreview: {
+    type: String,
+    required: false,
+  },
+  targetSong: {
+    title: { type: String, required: false },
+    artist: { type: String, required: false },
+    album_cover: { type: String, required: false },
+  },
+  attempts: {
+    type: Number,
+    required: true,
+    default: 0,
+  },
+  hintLevel: {
+    type: Number,
+    required: true,
+    default: 0,
+  },
+  created_at: {
+    type: Date,
+    required: true,
+    default: Date.now,
+  },
+  userId: {
+    type: String,
+    required: true,
+  },
 });
 
 module.exports = mongoose.model('Session', sessionSchema);
