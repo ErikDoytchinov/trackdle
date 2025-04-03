@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import axios from 'axios';
-import debounce from 'lodash.debounce';
+import Downshift from 'downshift';
 import GameSetup from './components/GameSetup';
 import GuessHistory from './components/GuessHistory';
 import SongPreview from './components/SongPreview';
@@ -24,8 +24,6 @@ const App = () => {
     correctSong: null,
   });
   const [inputValue, setInputValue] = useState('');
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const [activeSuggestion, setActiveSuggestion] = useState(0);
   const [showAuth, setShowAuth] = useState(false);
   const [user, setUser] = useState(null);
   const [stats, setStats] = useState({
@@ -39,13 +37,11 @@ const App = () => {
   const maxAttempts = 5;
   const snippetProgress = useAudioProgress(audioRef, progressBarRef);
 
-  // Helper to get axios configuration for authenticated requests
   const getAuthConfig = useCallback(() => {
     const token = localStorage.getItem('token');
     return token ? { headers: { Authorization: `Bearer ${token}` } } : {};
   }, []);
 
-  // Fetch user info and stats on component mount
   useEffect(() => {
     const fetchUserAndStats = async () => {
       const token = localStorage.getItem('token');
@@ -69,7 +65,6 @@ const App = () => {
     fetchUserAndStats();
   }, [getAuthConfig]);
 
-  // Function to refetch stats when profile icon is clicked
   const fetchStats = async () => {
     try {
       const statsResponse = await axios.get(
@@ -82,19 +77,13 @@ const App = () => {
     }
   };
 
-  const debouncedSetGuess = useCallback(
-    debounce((value) => {
-      setState((prev) => ({ ...prev, guess: value }));
-    }, 300),
-    []
-  );
-
+  // Filter suggestions based on the current input value
   const filteredSongs = useMemo(() => {
-    if (!state.guess) return [];
+    if (!inputValue) return [];
     return state.recommendedSongs.filter((song) =>
-      song.name.toLowerCase().includes(state.guess.toLowerCase())
+      song.name.toLowerCase().includes(inputValue.toLowerCase())
     );
-  }, [state.guess, state.recommendedSongs]);
+  }, [inputValue, state.recommendedSongs]);
 
   const playSnippet = useCallback(
     (duration) => {
@@ -104,7 +93,7 @@ const App = () => {
       audioRef.current.currentTime = 0;
       progressBarRef.current.style.transition = 'none';
       progressBarRef.current.style.width = '0%';
-      progressBarRef.current.offsetWidth;
+      progressBarRef.current.offsetWidth; // trigger reflow
       progressBarRef.current.style.transition = 'width 0.05s linear';
       audioRef.current.play().catch(console.error);
       snippetProgress.updateProgress(duration, 0);
@@ -112,7 +101,6 @@ const App = () => {
     [snippetProgress]
   );
 
-  // This helper now only increases the attempt count and snippet duration.
   const incrementGuess = () => {
     const newDuration = state.snippetDuration * 2;
     const newAttempt = state.attempt + 1;
@@ -233,7 +221,6 @@ const App = () => {
         },
       ];
 
-      // If the backend signals that the game is over (correct song returned)
       if (data.correct) {
         setState((prev) => ({
           ...prev,
@@ -246,14 +233,13 @@ const App = () => {
           history: newHistory,
         }));
       } else {
-        // If this guess was incorrect and we're at our last attempt, update state with song data from backend.
         if (state.attempt + 1 >= maxAttempts) {
           setState((prev) => ({
             ...prev,
             feedback: 'Game over! The correct song was not guessed.',
             correctGuess: true,
-            correctSong: data.song, // ensure the correct song info is saved
-            songData: { preview_url: data.song.preview_url }, // update the preview URL
+            correctSong: data.song,
+            songData: { preview_url: data.song.preview_url },
             history: newHistory,
           }));
         } else {
@@ -329,14 +315,6 @@ const App = () => {
     }
   };
 
-  const handleSuggestionClick = (songName) => {
-    setInputValue(songName);
-    setState((prev) => ({ ...prev, guess: songName }));
-    setShowSuggestions(false);
-  };
-
-  // Handle profile icon click:
-  // If user is logged in, fetch stats before opening the auth modal.
   const handleProfileClick = async () => {
     if (user) {
       await fetchStats();
@@ -426,76 +404,75 @@ const App = () => {
                       />
                     </div>
                     <form onSubmit={handleGuess} className="relative">
-                      <input
-                        type="text"
-                        placeholder="Guess the song..."
-                        value={inputValue}
-                        onChange={(e) => {
-                          setInputValue(e.target.value);
-                          debouncedSetGuess(e.target.value);
-                        }}
-                        onFocus={() => setShowSuggestions(true)}
-                        onBlur={() => setTimeout(() => setShowSuggestions(false), 100)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'ArrowDown') {
-                            e.preventDefault();
-                            setActiveSuggestion((prev) =>
-                              Math.min(prev + 1, filteredSongs.length - 1)
-                            );
-                          } else if (e.key === 'ArrowUp') {
-                            e.preventDefault();
-                            setActiveSuggestion((prev) => Math.max(prev - 1, 0));
-                          } else if (e.key === 'Enter') {
-                            if (showSuggestions && filteredSongs.length > 0) {
-                              e.preventDefault();
-                              handleSuggestionClick(filteredSongs[activeSuggestion].name);
-                            }
+                      <Downshift
+                        onChange={(selectedItem) => {
+                          if (selectedItem) {
+                            setInputValue(selectedItem.name);
+                            setState((prev) => ({ ...prev, guess: selectedItem.name }));
                           }
                         }}
-                        aria-autocomplete="list"
-                        aria-controls="suggestion-list"
-                        className="w-full px-4 py-3 rounded-lg bg-slate-700 border border-slate-600 focus:border-amber-400 focus:ring-2 focus:ring-amber-400/30 text-white transition-all"
-                      />
-                      {showSuggestions && filteredSongs.length > 0 && (
-                        <ul
-                          id="suggestion-list"
-                          className="absolute z-20 w-full mt-2 bg-slate-700 rounded-lg overflow-hidden shadow-lg max-h-48 overflow-y-auto"
-                          role="listbox"
-                        >
-                          {filteredSongs.map((song, index) => (
-                            <li
-                              key={song.id}
-                              onClick={() => handleSuggestionClick(song.name)}
-                              className={`px-4 py-2 cursor-pointer border-t border-slate-600 first:border-t-0 transition-colors ${
-                                index === activeSuggestion
-                                  ? 'bg-slate-600'
-                                  : 'hover:bg-slate-600'
-                              }`}
-                              role="option"
-                              aria-selected={index === activeSuggestion}
+                        inputValue={inputValue}
+                        onInputValueChange={(value) => {
+                          setInputValue(value);
+                          setState((prev) => ({ ...prev, guess: value }));
+                        }}
+                        itemToString={(item) => (item ? item.name : '')}
+                      >
+                        {({
+                          getInputProps,
+                          getItemProps,
+                          getMenuProps,
+                          isOpen,
+                          highlightedIndex,
+                        }) => (
+                          <div className="relative">
+                            <input
+                              {...getInputProps({
+                                placeholder: 'Guess the song...',
+                                className:
+                                  'w-full px-4 py-3 rounded-lg bg-slate-700 border border-slate-600 focus:border-amber-400 focus:ring-2 focus:ring-amber-400/30 text-white transition-all',
+                              })}
+                            />
+                            <ul
+                              {...getMenuProps()}
+                              className="absolute z-20 w-full mt-2 bg-slate-700 rounded-lg overflow-hidden shadow-lg max-h-48 overflow-y-auto"
                             >
-                              <div className="text-white">{song.name}</div>
-                              <div className="text-sm text-slate-400">{song.artist}</div>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
+                              {isOpen &&
+                                filteredSongs.map((song, index) => (
+                                  <li
+                                    {...getItemProps({
+                                      key: song.id,
+                                      index,
+                                      item: song,
+                                      className: `px-4 py-2 cursor-pointer border-t border-slate-600 first:border-t-0 transition-colors ${
+                                        highlightedIndex === index ? 'bg-slate-600' : 'hover:bg-slate-600'
+                                      }`,
+                                    })}
+                                  >
+                                    <div className="text-white">{song.name}</div>
+                                    <div className="text-sm text-slate-400">{song.artist}</div>
+                                  </li>
+                                ))}
+                            </ul>
+                          </div>
+                        )}
+                      </Downshift>
+                      <div className="grid grid-cols-2 gap-3 mt-4">
+                        <button
+                          type="button"
+                          onClick={handleSkip}
+                          className="py-2.5 px-4 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg transition-colors"
+                        >
+                          Skip
+                        </button>
+                        <button
+                          type="submit"
+                          className="py-2.5 px-4 bg-amber-500 hover:bg-amber-400 text-slate-900 rounded-lg transition-colors"
+                        >
+                          Submit
+                        </button>
+                      </div>
                     </form>
-                    <div className="grid grid-cols-2 gap-3">
-                      <button
-                        onClick={handleSkip}
-                        className="py-2.5 px-4 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg transition-colors"
-                      >
-                        Skip
-                      </button>
-                      <button
-                        type="submit"
-                        onClick={handleGuess}
-                        className="py-2.5 px-4 bg-amber-500 hover:bg-amber-400 text-slate-900 rounded-lg transition-colors"
-                      >
-                        Submit
-                      </button>
-                    </div>
                     {state.history.length > 0 && <GuessHistory history={state.history} />}
                   </div>
                 ) : (
