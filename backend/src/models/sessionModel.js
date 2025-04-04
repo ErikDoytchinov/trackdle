@@ -19,7 +19,7 @@ const sessionSchema = new mongoose.Schema({
   mode: {
     type: String,
     required: true,
-    enum: ['playlist', 'random'],
+    enum: ['playlist', 'random', 'daily'],
   },
   status: {
     type: String,
@@ -58,7 +58,7 @@ const sessionSchema = new mongoose.Schema({
   },
   userId: {
     type: String,
-    required: true,
+    required: false,
   },
 });
 

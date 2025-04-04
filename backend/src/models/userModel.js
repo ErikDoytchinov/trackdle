@@ -10,9 +10,9 @@ const userSchema = new mongoose.Schema({
   totalAttempts: { type: Number, default: 0 },
   totalPlaytime: { type: Number, default: 0 },
   winRate: { type: Number, default: 0 },
+  canPlayDaily: { type: Boolean, default: true },
 });
 
-// Hash password before saving
 userSchema.pre('save', async function (next) {
   if (!this.isModified('password')) return next();
   try {
@@ -24,7 +24,6 @@ userSchema.pre('save', async function (next) {
   }
 });
 
-// Instance method to compare passwords
 userSchema.methods.comparePassword = function (candidatePassword) {
   return bcrypt.compare(candidatePassword, this.password);
 };

@@ -1,4 +1,3 @@
-// controllers/sessionController.js
 const logger = require('../config/logger');
 const {
   createSession,
@@ -20,13 +19,8 @@ async function postSession(req, res) {
     logger.info(
       `Creating new session with mode: ${mode}${playlist_url ? ` for playlist: ${playlist_url}` : ''}`
     );
-    const { session, tracks } = await createSession(mode, playlist_url);
+    const { session, tracks } = await createSession(mode, playlist_url, req);
     logger.info(`Created new session with ID: ${session._id}`);
-    // If an authenticated user exists, update the session's userId.
-    if (req.user) {
-      session.userId = req.user._id;
-      await session.save();
-    }
     res.json({ session_id: session._id, tracks });
   } catch (err) {
     logger.error(`Error creating session: ${err.message}`);
@@ -188,4 +182,9 @@ async function postNextTarget(req, res) {
   }
 }
 
-module.exports = { postSession, getSession, postGuess, postNextTarget };
+module.exports = {
+  postSession,
+  getSession,
+  postGuess,
+  postNextTarget,
+};

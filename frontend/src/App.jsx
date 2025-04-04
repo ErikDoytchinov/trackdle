@@ -193,6 +193,22 @@ const App = () => {
     }
   };
 
+  const handleBack = () => {
+    setState((prev) => ({
+      ...prev,
+      mode: 'playlist',
+      gameStarted: false,
+      sessionId: null,
+      songData: null,
+      feedback: '',
+      correctSong: null,
+      snippetDuration: 1,
+      attempt: 0,
+      history: [],
+      guess: '',
+    }));
+  };
+
   const handleGuess = async (e) => {
     e.preventDefault();
     if (!state.songData || state.guess === undefined) return;
@@ -495,10 +511,10 @@ const App = () => {
                           fullProgressBarRef={progressBarRef}
                         />
                         <button
-                          onClick={nextSong}
+                          onClick={state.mode === 'daily' ? handleBack : nextSong}
                           className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-slate-900 font-semibold rounded-lg transition-colors"
                         >
-                          Next Song
+                          {state.mode === 'daily' ? 'Back' : 'Next Song'}
                         </button>
                       </>
                     )}

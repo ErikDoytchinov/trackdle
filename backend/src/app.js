@@ -5,6 +5,9 @@ const morgan = require('morgan');
 const routes = require('./routes');
 const logger = require('./config/logger');
 const mongoose = require('mongoose');
+const cron = require('node-cron');
+const User = require('./models/userModel');
+const generateDailySong = require('./scheduler/dailySongScheduler');
 
 const allowedOrigins = [
   'https://trackdle.doytchinov.eu',
@@ -38,7 +41,31 @@ function createApp() {
 
   app.use(express.json({ limit: '5mb' }));
 
-  // Removed the extra request logging middleware since Morgan now handles it.
+  // schedule a job to run every day at midnight (server time or adjust for UTC)
+  cron.schedule(
+    '0 0 * * *',
+    async () => {
+      await User.updateMany({}, { canPlayDaily: true });
+      console.log('Daily play flag reset for all users.');
+      generateDailySong();
+      logger.info('Daily song generated.');
+    },
+    {
+      timezone: 'UTC',
+    }
+  );
+
+  // (async () => {
+  //   try {
+  //     await User.updateMany({}, { canPlayDaily: true });
+  //     console.log('Daily play flag reset for all users. (Startup run)');
+  //     await generateDailySong();
+  //     logger.info('Daily song generated. (Startup run)');
+  //   } catch (err) {
+  //     logger.error('Error running daily job at startup:', err);
+  //   }
+  // })();
+
   const mongoURI =
     process.env.MONGO_URI || 'mongodb://localhost:27017/trackdle';
 

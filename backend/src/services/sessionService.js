@@ -3,6 +3,8 @@ const SongPool = require('../models/songPoolModel');
 const { getCachedPlaylistTracks } = require('./spotifyService');
 const { getDeezerPreview } = require('./deezerService');
 const User = require('../models/userModel');
+const moment = require('moment');
+const DailySong = require('../models/dailySongModel');
 
 function shuffleArray(array) {
   for (let i = array.length - 1; i > 0; i--) {
@@ -31,14 +33,51 @@ async function getRandomTracks() {
  * Creates a new session.
  * If mode is 'playlist', uses the provided playlist URL and adds the songs to the SongPool (uniquely);
  * if mode is 'random', fetches a list of random tracks from the SongPool.
- * Returns an object containing the session document and the list of tracks.
+ * If mode is 'daily', ensures the user can play and uses the daily song from DailySong.
+ * Returns an object containing the session document and the list of tracks (if applicable).
  */
-async function createSession(mode, playlist_url) {
-  let tracks;
-  if (mode === 'playlist') {
-    // Fetch tracks from the provided playlist URL
+async function createSession(mode, playlist_url, req) {
+  let target;
+  let tracks = [];
+
+  if (mode === 'daily') {
+    if (!req.user) {
+      throw new Error('Authentication required for daily mode.');
+    }
+    if (!req.user.canPlayDaily) {
+      throw new Error('Daily game already played today.');
+    }
+
+    const todayKey = moment().utc().format('YYYY-MM-DD');
+    const dailyRecord = await DailySong.findOne({ date: todayKey });
+    if (!dailyRecord) {
+      throw new Error('Daily song not available.');
+    }
+
+    req.user.canPlayDaily = false;
+    await req.user.save();
+
+    target = {
+      name: dailyRecord.song.title,
+      artist: dailyRecord.song.artist,
+      album_cover: dailyRecord.song.album_cover,
+      preview_url: dailyRecord.song.preview_url,
+    };
+    tracks = await getRandomTracks();
+    const exists = tracks.some(
+      (t) => t.name === target.name && t.artist === target.artist
+    );
+    if (!exists) {
+      tracks.push({
+        name: target.name,
+        artist: target.artist,
+        album_cover: target.album_cover,
+        preview_url: target.preview_url,
+      });
+    }
+    tracks = shuffleArray(tracks);
+  } else if (mode === 'playlist') {
     tracks = await getCachedPlaylistTracks(playlist_url);
-    // Upsert each track into SongPool to ensure uniqueness
     for (const track of tracks) {
       await SongPool.findOneAndUpdate(
         { 'song.title': track.name, 'song.artist': track.artist },
@@ -54,35 +93,43 @@ async function createSession(mode, playlist_url) {
         { upsert: true, new: true }
       );
     }
+    if (!tracks.length) {
+      throw new Error('No tracks found.');
+    }
+    const shuffledTracks = shuffleArray([...tracks]);
+    for (const track of shuffledTracks) {
+      const preview = await getDeezerPreview(track.name, track.artist);
+      if (preview) {
+        target = { ...track, preview_url: preview };
+        break;
+      }
+    }
+    if (!target) {
+      throw new Error('No target track with a preview found.');
+    }
   } else if (mode === 'random') {
     tracks = await getRandomTracks();
+    if (!tracks.length) {
+      throw new Error('No tracks found.');
+    }
+    const shuffledTracks = shuffleArray([...tracks]);
+    for (const track of shuffledTracks) {
+      const preview = await getDeezerPreview(track.name, track.artist);
+      if (preview) {
+        target = { ...track, preview_url: preview };
+        break;
+      }
+    }
+    if (!target) {
+      throw new Error('No target track with a preview found.');
+    }
   } else {
     throw new Error('Invalid mode provided.');
   }
 
-  if (!tracks.length) {
-    throw new Error('No tracks found.');
-  }
-
-  // Shuffle tracks and pick the first track with a valid preview.
-  const shuffledTracks = shuffleArray([...tracks]);
-  let target = null;
-  for (const track of shuffledTracks) {
-    const preview = await getDeezerPreview(track.name, track.artist);
-    if (preview) {
-      target = { ...track, preview_url: preview };
-      break;
-    }
-  }
-  if (!target) {
-    throw new Error('No target track with a preview found.');
-  }
-
-  // Create session document with mode and target info.
   const session = new Session({
     mode,
     status: 'in-progress',
-    // Include playlist_url only for playlist mode.
     playlist_url: mode === 'playlist' ? playlist_url : undefined,
     targetPreview: target.preview_url,
     targetSong: {
@@ -92,7 +139,7 @@ async function createSession(mode, playlist_url) {
     },
     attempts: 0,
     hintLevel: 0,
-    userId: 'user123', // Replace with real user info if needed.
+    userId: req.user ? req.user._id : null,
   });
   await session.save();
   return { session, tracks };
@@ -179,4 +226,10 @@ async function updateUserStats(
   return user;
 }
 
-module.exports = { createSession, getSessionById, nextTarget, updateUserStats };
+module.exports = {
+  createSession,
+  getSessionById,
+  nextTarget,
+  updateUserStats,
+  getRandomTracks,
+};
