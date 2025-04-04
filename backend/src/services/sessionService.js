@@ -19,9 +19,9 @@ function shuffleArray(array) {
  * It uses MongoDB's $sample operator to pick a random set of songs.
  */
 async function getRandomTracks() {
-  // Sample 10 random documents (adjust the size as needed)
+  // sample 10 random documents (adjust the size as needed)
   const randomDocs = await SongPool.aggregate([{ $sample: { size: 100 } }]);
-  // Map the documents to track objects similar to fetchBasicPlaylistTracks output
+  // map the documents to track objects similar to fetchBasicPlaylistTracks output
   return randomDocs.map((doc) => ({
     name: doc.song.title,
     artist: doc.song.artist,
@@ -52,6 +52,19 @@ async function createSession(mode, playlist_url, req) {
     const dailyRecord = await DailySong.findOne({ date: todayKey });
     if (!dailyRecord) {
       throw new Error('Daily song not available.');
+    }
+
+    // check if the preview URL is older than 1 hour based on the document's createdAt field.
+    if (moment().diff(moment(dailyRecord.createdAt), 'minutes') >= 30) {
+      const newPreview = await getDeezerPreview(
+        dailyRecord.song.title,
+        dailyRecord.song.artist
+      );
+      if (newPreview) {
+        dailyRecord.song.preview_url = newPreview;
+        dailyRecord.createdAt = new Date();
+        await dailyRecord.save();
+      }
     }
 
     req.user.canPlayDaily = false;
