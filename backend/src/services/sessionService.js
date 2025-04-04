@@ -120,6 +120,11 @@ async function createSession(mode, playlist_url, req) {
     if (!target) {
       throw new Error('No target track with a preview found.');
     }
+    if (
+      !tracks.some((t) => t.name === target.name && t.artist === target.artist)
+    ) {
+      tracks.push(target);
+    }
   } else if (mode === 'random') {
     tracks = await getRandomTracks();
     if (!tracks.length) {
@@ -135,6 +140,11 @@ async function createSession(mode, playlist_url, req) {
     }
     if (!target) {
       throw new Error('No target track with a preview found.');
+    }
+    if (
+      !tracks.some((t) => t.name === target.name && t.artist === target.artist)
+    ) {
+      tracks.push(target);
     }
   } else {
     throw new Error('Invalid mode provided.');
