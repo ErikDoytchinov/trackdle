@@ -32,6 +32,7 @@ const App = () => {
     correctGuesses: 0,
     averageAttempts: 0,
   });
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
   const audioRef = useRef(null);
   const progressBarRef = useRef(null);
@@ -107,6 +108,18 @@ const App = () => {
       audioRef.current.volume = volume;
     }
   }, [volume]);
+
+  // Add global escape key handler
+  useEffect(() => {
+    const handleEscapeKey = (e) => {
+      if (e.key === 'Escape') {
+        setIsDropdownOpen(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleEscapeKey);
+    return () => window.removeEventListener('keydown', handleEscapeKey);
+  }, []);
 
   const incrementGuess = () => {
     const newDuration = state.snippetDuration * 2;
@@ -466,6 +479,16 @@ const App = () => {
                           setInputValue(value);
                           setState((prev) => ({ ...prev, guess: value }));
                         }}
+                        isOpen={isDropdownOpen}
+                        onOuterClick={() => setIsDropdownOpen(false)}
+                        onStateChange={(changes) => {
+                          if (changes.hasOwnProperty('isOpen')) {
+                            setIsDropdownOpen(changes.isOpen);
+                          }
+                          if (changes.type === Downshift.stateChangeTypes.keyDownEscape) {
+                            setIsDropdownOpen(false);
+                          }
+                        }}
                         itemToString={(item) => (item ? item.name : '')}
                       >
                         {({
@@ -481,6 +504,11 @@ const App = () => {
                                 placeholder: 'Guess the song...',
                                 className:
                                   'w-full px-4 py-3 rounded-lg bg-slate-700 border border-slate-600 focus:border-amber-400 focus:ring-2 focus:ring-amber-400/30 text-white transition-all',
+                                onFocus: () => {
+                                  if (inputValue && filteredSongs.length > 0) {
+                                    setIsDropdownOpen(true);
+                                  }
+                                },
                               })}
                             />
                             <ul
