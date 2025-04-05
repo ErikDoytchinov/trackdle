@@ -14,6 +14,12 @@ exports.signup = async (req, res) => {
     if (existingUser) {
       return res.status(400).json({ message: 'User already exists' });
     }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ message: 'Invalid email address' });
+    }
+
     const user = await User.create({ email, password });
     const token = generateToken(user);
     res.json({

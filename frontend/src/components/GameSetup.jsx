@@ -77,9 +77,7 @@ const GameSetup = ({ state, setState, startGame, user }) => {
 
   // Re-run checkDailyStatus whenever the user changes (e.g., after login/signup)
   useEffect(() => {
-    if (user) {
-      checkDailyStatus();
-    }
+    checkDailyStatus(); 
   }, [user]);
 
   return (

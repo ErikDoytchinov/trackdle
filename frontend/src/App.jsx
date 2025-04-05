@@ -389,7 +389,7 @@ const App = () => {
           Trackdle
         </h1>
         {!state.gameStarted ? (
-          <GameSetup state={state} setState={setState} startGame={startGame} />
+          <GameSetup state={state} setState={setState} startGame={startGame} user={user} />
         ) : (
           <>
             {!state.songData ? (

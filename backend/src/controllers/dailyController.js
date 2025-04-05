@@ -1,7 +1,11 @@
 let logger = require('../config/logger');
-const DailySong = require('../models/dailySongModel');
-const User = require('../models/userModel');
 
+/**
+ * GET /daily/status
+ * Returns the status of the daily challenge.
+ * If the user is authenticated, it returns whether they can play the daily challenge.
+ * It also returns the time remaining until the next daily challenge is available.
+ */
 const getDailyStatus = async (req, res) => {
   try {
     const now = new Date();
