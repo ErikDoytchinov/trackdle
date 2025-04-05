@@ -19,9 +19,7 @@ function shuffleArray(array) {
  * It uses MongoDB's $sample operator to pick a random set of songs.
  */
 async function getRandomTracks() {
-  // sample 10 random documents (adjust the size as needed)
-  const randomDocs = await SongPool.aggregate([{ $sample: { size: 100 } }]);
-  // map the documents to track objects similar to fetchBasicPlaylistTracks output
+  const randomDocs = await SongPool.aggregate([{ $sample: { size: 1000 } }]);
   return randomDocs.map((doc) => ({
     name: doc.song.title,
     artist: doc.song.artist,
@@ -90,8 +88,21 @@ async function createSession(mode, playlist_url, req) {
     }
     tracks = shuffleArray(tracks);
   } else if (mode === 'playlist') {
-    tracks = await getCachedPlaylistTracks(playlist_url);
-    for (const track of tracks) {
+    const allTracks = await getCachedPlaylistTracks(playlist_url);
+    // filter tracks by popularity (Spotify popularity score is 0-100)
+    const popularityThreshold = 60;
+    const popularTracks = allTracks.filter(
+      (track) => track.popularity && track.popularity >= popularityThreshold
+    );
+
+    console.log(
+      `Filtered playlist tracks: ${allTracks.length} total, ${popularTracks.length} meet popularity threshold`
+    );
+
+    tracks = allTracks;
+
+    // only add popular tracks to the song pool
+    for (const track of popularTracks) {
       await SongPool.findOneAndUpdate(
         { 'song.title': track.name, 'song.artist': track.artist },
         {
@@ -100,6 +111,7 @@ async function createSession(mode, playlist_url, req) {
               title: track.name,
               artist: track.artist,
               album_cover: track.album_cover,
+              popularity: track.popularity,
             },
           },
         },

@@ -58,7 +58,7 @@ async function getSpotifyToken() {
 
 /**
  * Fetch basic playlist tracks from Spotify.
- * Returns an array of { id, name, artist, album_cover } objects.
+ * Returns an array of { id, name, artist, album_cover, popularity } objects.
  */
 async function fetchBasicPlaylistTracks(url) {
   const parts = url.split('/playlist/');
@@ -86,6 +86,7 @@ async function fetchBasicPlaylistTracks(url) {
             name: item.track.name,
             artist: item.track.artists.map((a) => a.name).join(', '),
             album_cover: item.track.album.images[0]?.url,
+            popularity: item.track.popularity, // Include popularity score (0-100)
           };
         })
         .filter(Boolean)

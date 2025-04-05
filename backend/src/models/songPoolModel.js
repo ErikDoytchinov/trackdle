@@ -5,6 +5,7 @@ const songPoolSchema = new mongoose.Schema({
     title: { type: String, required: true },
     artist: { type: String, required: true },
     album_cover: { type: String, required: false },
+    popularity: { type: Number, required: false },
   },
 });
 
