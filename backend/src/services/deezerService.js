@@ -1,7 +1,9 @@
 const axios = require('axios');
 const logger = require('../config/logger');
+const NodeCache = require('node-cache');
 
-const deezerPreviewCache = new Map();
+const cacheTTLSeconds = 20 * 60; // 20 minutes in seconds
+const deezerPreviewCache = new NodeCache({ stdTTL: cacheTTLSeconds });
 
 /**
  * Get Deezer preview for a given song.
@@ -11,47 +13,34 @@ const deezerPreviewCache = new Map();
 async function getDeezerPreview(songName, artistName) {
   const queryKey = `${songName} ${artistName}`;
 
-  // Check our cache
-  if (deezerPreviewCache.has(queryKey)) {
-    return deezerPreviewCache.get(queryKey);
+  const cachedPreview = deezerPreviewCache.get(queryKey);
+  if (cachedPreview !== undefined) {
+    return cachedPreview;
   }
 
   try {
     logger.info(`Fetching Deezer preview for "${songName}" by "${artistName}"`);
 
-    // Use advanced query syntax to narrow down results
     const queryString = `track:"${songName}" artist:"${artistName}"`;
     const searchUrl = `https://api.deezer.com/search?q=${encodeURIComponent(queryString)}`;
 
-    // Set a 1000ms timeout for the request
-    const response = await axios.get(searchUrl, { timeout: 1000 });
+    const { data } = await axios.get(searchUrl, { timeout: 1000 });
 
-    if (response.data?.data?.length) {
-      const results = response.data.data;
-      let exactMatch = null;
-
-      // Look for an exact match (case-insensitive) on both track title and artist name
-      for (const track of results) {
-        if (
+    if (data?.data?.length) {
+      const exactMatch = data.data.find(
+        (track) =>
           track.title &&
           track.artist &&
           track.title.toLowerCase() === songName.toLowerCase() &&
           track.artist.name.toLowerCase() === artistName.toLowerCase()
-        ) {
-          exactMatch = track;
-          break;
-        }
-      }
+      );
 
-      // Only use the preview if an exact match is found
       if (exactMatch) {
         const preview = exactMatch.preview;
         deezerPreviewCache.set(queryKey, preview);
         return preview;
       }
     }
-
-    // No exact match found
     deezerPreviewCache.set(queryKey, null);
     return null;
   } catch (err) {
