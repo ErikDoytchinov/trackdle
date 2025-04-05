@@ -93,6 +93,8 @@ const App = () => {
       snippetProgress.clearProgress();
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
+      // Ensure volume is set before playing
+      audioRef.current.volume = volume;
       progressBarRef.current.style.transition = 'none';
       progressBarRef.current.style.width = '0%';
       progressBarRef.current.offsetWidth; // trigger reflow
@@ -100,7 +102,7 @@ const App = () => {
       audioRef.current.play().catch(console.error);
       snippetProgress.updateProgress(duration, 0);
     },
-    [snippetProgress]
+    [snippetProgress, volume] // Add volume as a dependency
   );
 
   useEffect(() => {
@@ -171,7 +173,14 @@ const App = () => {
         feedback: '',
       }));
       setInputValue('');
-      playSnippet(1);
+      
+      // Add a small delay to ensure the audio element is updated
+      setTimeout(() => {
+        if (audioRef.current) {
+          audioRef.current.volume = volume;
+        }
+        playSnippet(1);
+      }, 50);
     } catch (error) {
       console.error(error);
       setState((prev) => ({
@@ -183,6 +192,17 @@ const App = () => {
 
   const nextSong = async () => {
     try {
+      // reset audio progress and UI before fetching the next song
+      snippetProgress.clearProgress();
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+      }
+      if (progressBarRef.current) {
+        progressBarRef.current.style.transition = 'none';
+        progressBarRef.current.style.width = '0%';
+      }
+
       const targetResponse = await axios.post(
         `${import.meta.env.VITE_API_URL}/session/${state.sessionId}/next`,
         {},
@@ -207,7 +227,14 @@ const App = () => {
         correctSong: null,
       }));
       setInputValue('');
-      playSnippet(1);
+      
+      // ensure DOM has updated before playing snippet
+      setTimeout(() => {
+        if (audioRef.current) {
+          audioRef.current.volume = volume;
+        }
+        playSnippet(1);
+      }, 50);
     } catch (error) {
       console.error(error);
       setState((prev) => ({ ...prev, feedback: 'Error loading next song.' }));
@@ -358,6 +385,13 @@ const App = () => {
     }
     setShowAuth(true);
   };
+
+  // Add a new useEffect to handle audio element updates
+  useEffect(() => {
+    if (audioRef.current && state.songData) {
+      audioRef.current.volume = volume;
+    }
+  }, [state.songData, volume]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 flex items-center justify-center p-4">
