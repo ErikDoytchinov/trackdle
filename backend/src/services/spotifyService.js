@@ -67,7 +67,7 @@ async function fetchBasicPlaylistTracks(url) {
 
   const token = await getSpotifyToken();
   const baseUrl = `https://api.spotify.com/v1/playlists/${playlistId}/tracks`;
-  const limit = 500; // max tracks per request
+  const limit = 100;
   const headers = { Authorization: `Bearer ${token}` };
 
   let tracks = [];
