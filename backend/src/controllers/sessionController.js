@@ -171,11 +171,14 @@ async function postNextTarget(req, res) {
     logger.info(
       `Updating session with a new target for session ID: ${session_id}`
     );
-    const session = await nextTarget(session_id);
+    const { session: updatedSession, tracks } = await nextTarget(session_id);
     logger.info(
       `Updated session with new target for session ID: ${session_id}`
     );
-    res.json({ track: { preview_url: session.targetPreview } });
+    return res.json({
+      track: { preview_url: updatedSession.targetPreview },
+      tracks,
+    });
   } catch (err) {
     logger.error(`Error updating session: ${err.message}`);
     res.status(500).json({ error: err.message });

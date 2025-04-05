@@ -26,6 +26,7 @@ const App = () => {
   const [inputValue, setInputValue] = useState('');
   const [showAuth, setShowAuth] = useState(false);
   const [user, setUser] = useState(null);
+  const [volume, setVolume] = useState(0.5);
   const [stats, setStats] = useState({
     gamesPlayed: 0,
     correctGuesses: 0,
@@ -101,6 +102,12 @@ const App = () => {
     [snippetProgress]
   );
 
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.volume = volume;
+    }
+  }, [volume]);
+
   const incrementGuess = () => {
     const newDuration = state.snippetDuration * 2;
     const newAttempt = state.attempt + 1;
@@ -168,14 +175,15 @@ const App = () => {
         {},
         getAuthConfig()
       );
-      const targetTrack = targetResponse.data.track;
-      if (!targetTrack) {
+      const { track, tracks } = targetResponse.data;
+      if (!track) {
         setState((prev) => ({ ...prev, feedback: 'No preview available.' }));
         return;
       }
-      const songData = { preview_url: targetTrack.preview_url };
+      const songData = { preview_url: track.preview_url };
       setState((prev) => ({
         ...prev,
+        recommendedSongs: tracks,
         songData,
         snippetDuration: 1,
         attempt: 0,
@@ -402,6 +410,31 @@ const App = () => {
                       <div className="text-slate-400 text-sm">
                         Attempt {state.attempt + 1} of {maxAttempts}
                       </div>
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2">
+                          <svg 
+                            className="w-4 h-4 text-slate-400" 
+                            fill="none" 
+                            viewBox="0 0 24 24" 
+                            stroke="currentColor"
+                          >
+                            <path 
+                              strokeLinecap="round" 
+                              strokeLinejoin="round" 
+                              strokeWidth={2} 
+                              d="M15.536 8.464a5 5 0 010 7.072M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
+                            />
+                          </svg>
+                          <input
+                            type="range"
+                            min="0"
+                            max="1"
+                            step="0.1"
+                            value={volume}
+                            onChange={(e) => setVolume(parseFloat(e.target.value))}
+                            className="w-20 h-2 bg-slate-600 rounded-lg appearance-none cursor-pointer"
+                          />
+                      </div>
                       <button
                         onClick={() => playSnippet(state.snippetDuration)}
                         className="flex items-center gap-2 px-3 py-1.5 bg-slate-700 rounded-md text-slate-300 hover:bg-slate-600 transition-colors"
@@ -411,6 +444,7 @@ const App = () => {
                         </svg>
                         Play {state.snippetDuration}s
                       </button>
+                      </div>
                     </div>
                     <audio ref={audioRef} src={state.songData.preview_url} preload="auto" />
                     <div className="h-1.5 bg-slate-700 rounded-full overflow-hidden">

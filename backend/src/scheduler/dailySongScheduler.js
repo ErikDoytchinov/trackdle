@@ -6,14 +6,13 @@ const { getDeezerPreview } = require('../services/deezerService');
 async function generateDailySong() {
   const today = moment().utc().format('YYYY-MM-DD');
 
-  // Check if a daily song for today already exists
   const existing = await DailySong.findOne({ date: today });
   if (existing) {
     console.log(`Daily song for ${today} already exists.`);
     return;
   }
 
-  // Otherwise, get a random song from your pool
+  // get a random song from your pool
   const tracks = await getRandomTracks();
   let target = null;
   for (const track of tracks) {

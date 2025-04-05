@@ -23,7 +23,6 @@ async function getCachedPlaylistTracks(url) {
  */
 async function getSpotifyToken() {
   const now = Date.now();
-  // If we have a cached token and it's not expired, return it
   if (spotifyTokenCache && now < spotifyTokenExpiresAt) {
     return spotifyTokenCache;
   }
@@ -46,7 +45,6 @@ async function getSpotifyToken() {
     const token = response.data.access_token;
     const expiresIn = response.data.expires_in || 3600;
 
-    // Refresh one minute before actual expiration
     spotifyTokenCache = token;
     spotifyTokenExpiresAt = now + expiresIn * 1000 - 60000;
 
@@ -63,14 +61,13 @@ async function getSpotifyToken() {
  * Returns an array of { id, name, artist, album_cover } objects.
  */
 async function fetchBasicPlaylistTracks(url) {
-  // Extract playlist ID from URL: expects .../playlist/{playlistId}?...
   const parts = url.split('/playlist/');
   if (parts.length < 2) throw new Error('Invalid playlist URL format');
   const playlistId = parts[1].split('?')[0];
 
   const token = await getSpotifyToken();
   const baseUrl = `https://api.spotify.com/v1/playlists/${playlistId}/tracks`;
-  const limit = 100; // max tracks per request
+  const limit = 500; // max tracks per request
   const headers = { Authorization: `Bearer ${token}` };
 
   let tracks = [];
@@ -94,7 +91,6 @@ async function fetchBasicPlaylistTracks(url) {
         .filter(Boolean)
     );
 
-    // If Spotify has more than 100 items, response.data.next will be the next page
     nextUrl = response.data.next;
   }
 

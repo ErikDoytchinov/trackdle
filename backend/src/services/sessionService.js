@@ -223,7 +223,7 @@ async function nextTarget(session_id) {
   session.attempts = 0;
   session.hintLevel = 0;
   await session.save();
-  return session;
+  return { session, tracks };
 }
 
 async function updateUserStats(
