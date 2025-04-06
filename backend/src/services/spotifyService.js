@@ -77,19 +77,17 @@ async function fetchBasicPlaylistTracks(url) {
     const response = await axios.get(nextUrl, { headers });
     const items = response.data.items;
 
+    // Filter out local tracks (where is_local is true)
     tracks.push(
       ...items
-        .map((item) => {
-          if (!item.track) return null;
-          return {
-            id: item.track.id,
-            name: item.track.name,
-            artist: item.track.artists.map((a) => a.name).join(', '),
-            album_cover: item.track.album.images[0]?.url,
-            popularity: item.track.popularity, // Include popularity score (0-100)
-          };
-        })
-        .filter(Boolean)
+        .filter(item => item.track && !item.track.is_local)
+        .map(item => ({
+          id: item.track.id,
+          name: item.track.name,
+          artist: item.track.artists.map(a => a.name).join(', '),
+          album_cover: item.track.album.images[0]?.url,
+          popularity: item.track.popularity, // Popularity score (0-100)
+        }))
     );
 
     nextUrl = response.data.next;
