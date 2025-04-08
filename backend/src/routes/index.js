@@ -5,11 +5,13 @@ const sessionRoutes = require('./session');
 const userRoutes = require('./user');
 const authRoutes = require('./auth');
 const dailyRoutes = require('./daily');
+const multiplayerRoutes = require('./multiplayer');
 
 router.use('/session', sessionRoutes);
 router.use('/auth', authRoutes);
 router.use('/user', userRoutes);
 router.use('/daily', dailyRoutes);
+router.use('/multiplayer', multiplayerRoutes);
 router.use('/', (_req, res) => {
   res.json({ message: 'Ping Pong' });
 });
