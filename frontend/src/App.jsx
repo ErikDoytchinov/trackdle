@@ -4,8 +4,11 @@ import Downshift from 'downshift';
 import GameSetup from './components/GameSetup';
 import GuessHistory from './components/GuessHistory';
 import SongPreview from './components/SongPreview';
+import MultiplayerLobby from './components/MultiplayerLobby';
 import useAudioProgress from './hooks/useAudioProgress';
 import AuthProfile from './components/AuthProfile';
+import { io } from 'socket.io-client';
+import PropTypes from 'prop-types';
 
 const App = () => {
   const [state, setState] = useState({
@@ -33,6 +36,21 @@ const App = () => {
     averageAttempts: 0,
   });
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  
+  // Multiplayer state
+  const [mpState, setMpState] = useState({
+    inLobby: false,
+    gameId: null,
+    lobbyId: null,
+    currentSongIndex: 0,
+    totalSongs: 0,
+    leaderboard: [],
+    isMultiplayerGame: false,
+    currentGuess: '',
+    currentAttempt: 0,
+    currentSongComplete: false
+  });
+  const [socket, setSocket] = useState(null);
 
   const audioRef = useRef(null);
   const progressBarRef = useRef(null);
@@ -43,6 +61,115 @@ const App = () => {
     const token = localStorage.getItem('token');
     return token ? { headers: { Authorization: `Bearer ${token}` } } : {};
   }, []);
+
+  useEffect(() => {
+    if (user && !socket && state.mode === 'multiplayer') {
+      const apiUrl = import.meta.env.VITE_API_URL;
+      console.log(`Connecting to socket at ${apiUrl}`);
+      
+      const newSocket = io(apiUrl, {
+        auth: {
+          token: localStorage.getItem('token')
+        },
+        reconnection: true,
+        reconnectionAttempts: 5,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000,
+        timeout: 20000,
+      });
+    
+      newSocket.on('connect', () => {
+        console.log('Socket connected successfully');
+        
+        // Setup a heartbeat to detect zombie connections
+        const heartbeatInterval = setInterval(() => {
+          newSocket.emit('ping', (response) => {
+            if (response && response.status === 'ok') {
+              console.log('Socket heartbeat successful');
+            }
+          });
+        }, 30000);
+        
+        newSocket.heartbeatInterval = heartbeatInterval;
+      });
+      
+      newSocket.on('connect_error', (error) => {
+        console.error('Socket connection error:', error.message);
+        setState(prev => ({ 
+          ...prev, 
+          feedback: `Connection error: ${error.message}. Please try again.` 
+        }));
+      });
+      
+      newSocket.on('disconnect', (reason) => {
+        console.log(`Socket disconnected: ${reason}`);
+        if (newSocket.heartbeatInterval) {
+          clearInterval(newSocket.heartbeatInterval);
+        }
+        
+        if (reason === 'io server disconnect') {
+          setState(prev => ({ 
+            ...prev, 
+            feedback: 'You were disconnected by the server. Please log in again.' 
+          }));
+        } else {
+          setState(prev => ({ 
+            ...prev, 
+            feedback: 'Connection to game server lost. Attempting to reconnect...' 
+          }));
+          newSocket.connect();
+        }
+      });
+      
+      newSocket.on('reconnect', (attemptNumber) => {
+        console.log(`Socket reconnected after ${attemptNumber} attempts`);
+        setState(prev => ({ 
+          ...prev, 
+          feedback: 'Reconnected to game server!' 
+        }));
+      });
+      
+      newSocket.on('reconnect_error', (error) => {
+        console.error('Socket reconnection error:', error);
+      });
+      
+      newSocket.on('reconnect_failed', () => {
+        console.error('Socket reconnection failed after maximum attempts');
+        setState(prev => ({ 
+          ...prev, 
+          feedback: 'Failed to reconnect. Please refresh the page.' 
+        }));
+      });
+      
+      newSocket.on('error', (data) => {
+        console.error('Socket error:', data);
+        setState(prev => ({ ...prev, feedback: data.message }));
+      });
+
+      setSocket(newSocket);
+    }
+    
+    return () => {
+      if (socket) {
+        console.log("Cleaning up socket connection");
+        
+        if (socket.heartbeatInterval) {
+          clearInterval(socket.heartbeatInterval);
+        }
+      
+        socket.off('connect');
+        socket.off('disconnect');
+        socket.off('connect_error');
+        socket.off('reconnect');
+        socket.off('reconnect_error');
+        socket.off('reconnect_failed');
+        socket.off('error');
+        
+        socket.disconnect();
+        setSocket(null);
+      }
+    };
+  }, [user, state.mode]);
 
   useEffect(() => {
     const fetchUserAndStats = async () => {
@@ -141,6 +268,19 @@ const App = () => {
       setState((prev) => ({ ...prev, feedback: 'Please enter a playlist URL.' }));
       return;
     }
+    
+    if (state.mode === 'multiplayer') {
+      if (!user) {
+        setShowAuth(true);
+        setState(prev => ({ ...prev, feedback: 'You need to log in to play multiplayer games.' }));
+        return;
+      }
+      
+      setMpState(prev => ({ ...prev, inLobby: true }));
+      setState(prev => ({ ...prev, gameStarted: true }));
+      return;
+    }
+    
     try {
       const payload = { mode: state.mode };
       if (state.mode === 'playlist') {
@@ -191,6 +331,11 @@ const App = () => {
   };
 
   const nextSong = async () => {
+    if (mpState.isMultiplayerGame) {
+      // In multiplayer, we wait for server to advance the song
+      return;
+    }
+    
     try {
       // reset audio progress and UI before fetching the next song
       snippetProgress.clearProgress();
@@ -255,6 +400,24 @@ const App = () => {
       history: [],
       guess: '',
     }));
+    
+    setMpState({
+      inLobby: false,
+      gameId: null,
+      lobbyId: null,
+      currentSongIndex: 0,
+      totalSongs: 0,
+      leaderboard: [],
+      isMultiplayerGame: false,
+      currentGuess: '',
+      currentAttempt: 0,
+      currentSongComplete: false
+    });
+    
+    if (socket) {
+      socket.disconnect();
+      setSocket(null);
+    }
   };
 
   const handleGuess = async (e) => {
@@ -323,7 +486,7 @@ const App = () => {
     }
   };
 
-  const handleSkip = async () => {
+  const handleSkip = async () => {  
     try {
       const { data } = await axios.post(
         `${import.meta.env.VITE_API_URL}/session/${state.sessionId}/guess`,
@@ -385,6 +548,38 @@ const App = () => {
     }
     setShowAuth(true);
   };
+  
+  const setGameState = useCallback((gameState) => {
+    if (gameState.gameStarted) {
+      setMpState(prev => ({
+        ...prev,
+        inLobby: false,
+        gameId: gameState.gameId || prev.gameId,
+        isMultiplayerGame: true,
+        currentAttempt: 0,
+        currentSongComplete: false,
+        lobbyId: gameState.lobbyId || prev.lobbyId,
+        totalSongs: gameState.totalSongs || prev.totalSongs
+      }));
+      
+      if (gameState.currentPreviewUrl) {
+        setState(prev => ({
+          ...prev,
+          songData: { preview_url: gameState.currentPreviewUrl },
+          snippetDuration: 1,
+          attempt: 0,
+          feedback: 'Game started! Listen to the first song.',
+          guess: '',
+          correctGuess: false,
+          history: []
+        }));
+        
+        setTimeout(() => {
+          playSnippet(1);
+        }, 50);
+      }
+    }
+  }, [playSnippet]);
 
   // Add a new useEffect to handle audio element updates
   useEffect(() => {
@@ -443,19 +638,51 @@ const App = () => {
         <h1 className="text-3xl font-bold text-center mb-8 text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-400">
           Trackdle
         </h1>
+        
         {!state.gameStarted ? (
           <GameSetup state={state} setState={setState} startGame={startGame} user={user} />
+        ) : mpState.inLobby ? (
+          <MultiplayerLobby 
+            user={user}
+            onBack={handleBack}
+            socket={socket}
+          />
         ) : (
           <>
             {!state.songData ? (
               <div className="text-center py-8 text-slate-400">Loading track...</div>
             ) : (
               <div className="space-y-6">
-                {!state.correctGuess ? (
+                {state.feedback && (
+                  <div className={`p-3 rounded-lg text-sm ${
+                    state.feedback.includes('Correct') || state.feedback.includes('started')
+                      ? 'bg-green-500/10 text-green-400'
+                      : state.feedback.includes('Error') || state.feedback.includes('over')
+                      ? 'bg-red-500/10 text-red-400'
+                      : 'bg-amber-500/10 text-amber-400'
+                  }`}>
+                    {state.feedback}
+                  </div>
+                )}
+                
+                {mpState.isMultiplayerGame && (
+                  <div className="bg-slate-700/50 p-3 rounded-lg mb-4">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-300">
+                        Song {mpState.currentSongIndex + 1} of {mpState.totalSongs}
+                      </span>
+                      {mpState.currentSongComplete && (
+                        <span className="text-green-400">Song completed ✓</span>
+                      )}
+                    </div>
+                  </div>
+                )}
+                
+                {!state.correctGuess && !mpState.currentSongComplete ? (
                   <div className="space-y-4">
                     <div className="flex items-center justify-between mb-4">
                       <div className="text-slate-400 text-sm">
-                        Attempt {state.attempt + 1} of {maxAttempts}
+                        Attempt {mpState.isMultiplayerGame ? mpState.currentAttempt + 1 : state.attempt + 1} of {maxAttempts}
                       </div>
                       <div className="flex items-center gap-3">
                         <div className="flex items-center gap-2">
@@ -585,19 +812,10 @@ const App = () => {
                         </button>
                       </div>
                     </form>
-                    {state.history.length > 0 && <GuessHistory history={state.history} />}
+                    {state.history.length > 0 && !mpState.isMultiplayerGame && <GuessHistory history={state.history} />}
                   </div>
                 ) : (
                   <>
-                    <div
-                      className={`p-3 rounded-lg text-sm ${
-                        state.feedback.includes('Correct')
-                          ? 'bg-green-500/10 text-green-400'
-                          : 'bg-red-500/10 text-red-400'
-                      }`}
-                    >
-                      {state.feedback}
-                    </div>
                     {state.correctSong && (
                       <>
                         <audio ref={audioRef} src={state.songData.preview_url} preload="auto" />
@@ -606,15 +824,35 @@ const App = () => {
                           audioRef={audioRef}
                           fullProgressBarRef={progressBarRef}
                         />
-                        <button
-                          onClick={state.mode === 'daily' ? handleBack : nextSong}
-                          className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-slate-900 font-semibold rounded-lg transition-colors"
-                        >
-                          {state.mode === 'daily' ? 'Back' : 'Next Song'}
-                        </button>
+                        {mpState.isMultiplayerGame && mpState.currentSongComplete ? (
+                          <div className="text-center">
+                            <p className="text-slate-400 mb-4">Waiting for other players...</p>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={state.mode === 'daily' ? handleBack : nextSong}
+                            className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-slate-900 font-semibold rounded-lg transition-colors mt-4"
+                          >
+                            {state.mode === 'daily' ? 'Back' : 'Next Song'}
+                          </button>
+                        )}
                       </>
                     )}
                   </>
+                )}
+                
+                {mpState.isMultiplayerGame && mpState.leaderboard && mpState.leaderboard.length > 0 && (
+                  <div className="mt-6">
+                    <h3 className="text-sm text-slate-400 mb-2">Leaderboard</h3>
+                    <div className="space-y-1.5">
+                      {mpState.leaderboard.map((player, idx) => (
+                        <div key={idx} className="flex justify-between bg-slate-700/50 p-2.5 rounded">
+                          <span className="text-white">{player.email}</span>
+                          <span className="text-amber-400 font-medium">{player.score} pts</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 )}
               </div>
             )}
@@ -623,6 +861,13 @@ const App = () => {
       </div>
     </div>
   );
+};
+
+GameSetup.propTypes = {
+  state: PropTypes.object.isRequired,
+  setState: PropTypes.func.isRequired,
+  startGame: PropTypes.func.isRequired,
+  user: PropTypes.object
 };
 
 export default App;

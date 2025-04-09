@@ -165,20 +165,23 @@ const init = (server) => {
 
     socket.on('leave-lobby', async (lobbyId) => {
       try {
-        await multiplayerService.leaveLobby(lobbyId, socket.user._id);
+        logger.info(`User ${socket.user.email} leaving lobby: ${lobbyId}`);
+        const updatedLobby = await multiplayerService.leaveLobby(
+          lobbyId,
+          socket.user._id
+        );
         await socket.leave(lobbyId);
 
-        const lobby = await multiplayerService.getLobby(lobbyId);
-        if (lobby) {
+        if (updatedLobby) {
           io.to(lobbyId).emit('lobby-update', {
-            players: lobby.players.map((p) => ({
+            players: updatedLobby.players.map((p) => ({
               userId: p.userId,
               email: p.email,
               ready: p.ready,
               score: p.score,
             })),
-            status: lobby.status,
-            ownerId: lobby.ownerId,
+            status: updatedLobby.status,
+            ownerId: updatedLobby.ownerId,
           });
         }
 
@@ -191,14 +194,12 @@ const init = (server) => {
       }
     });
 
-    // when player toggles ready status
     socket.on('toggle-ready', async (lobbyId) => {
       try {
         logger.info(
           `Toggle ready request for lobby: ${lobbyId} by user: ${socket.user.email}`
         );
 
-        // Ensure we have a proper ObjectId
         const objectId = new mongoose.Types.ObjectId(lobbyId);
 
         const lobby = await multiplayerService.togglePlayerReady(
@@ -206,7 +207,7 @@ const init = (server) => {
           socket.user._id
         );
 
-        // Get the string representation for room targeting
+        // get the string representation for room targeting
         const lobbyIdString = lobbyId.toString ? lobbyId.toString() : lobbyId;
         logger.info(
           `Emitting lobby-update for toggle-ready to room ${lobbyIdString}`
@@ -246,7 +247,36 @@ const init = (server) => {
       }
     });
 
-    // Add a ping-pong mechanism for connection health
+    socket.on('start-game', async (lobbyId) => {
+      try {
+        logger.info(
+          `Start game request for lobby: ${lobbyId} by user: ${socket.user.email}`
+        );
+        const objectId = new mongoose.Types.ObjectId(lobbyId);
+
+        const lobby = await multiplayerService.startGame(
+          objectId,
+          socket.user._id
+        );
+
+        // get the string representation for room targeting
+        const lobbyIdString = lobbyId.toString ? lobbyId.toString() : lobbyId;
+        logger.info(`Emitting game-started event to room ${lobbyIdString}`);
+
+        io.to(lobbyIdString).emit('game-started', {
+          tracks: lobby.tracks,
+          gameSettings: lobby.gameSettings,
+          ownerId: lobby.ownerId,
+          maxPlayers: lobby.maxPlayers,
+          gameStartedAt: Date.now(),
+        });
+      } catch (err) {
+        logger.error(`Error starting game: ${err.message}`);
+        socket.emit('error', { message: err.message });
+      }
+    });
+
+    // add a ping-pong mechanism for connection health
     socket.on('ping', (callback) => {
       if (typeof callback === 'function') {
         callback({ status: 'ok', timestamp: Date.now() });

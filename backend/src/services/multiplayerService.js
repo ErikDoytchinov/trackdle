@@ -40,7 +40,7 @@ const createLobby = async (userId, settings = {}) => {
 const getLobby = async (lobbyId) => {
   const lobby = await MultiplayerLobby.findById(lobbyId);
   if (!lobby) {
-    throw new Error('Lobby not found');
+    throw new Error('Lobby not found when trying to get it');
   }
   return lobby;
 };
@@ -56,7 +56,7 @@ const joinLobby = async (lobbyId, userId) => {
     $or: [{ _id: lobbyId }, { lobbyCode: lobbyId }],
   });
 
-  if (!lobby) throw new Error('Lobby not found');
+  if (!lobby) throw new Error('Lobby not found when trying to join it');
   if (lobby.status !== 'waiting')
     throw new Error('Lobby is not accepting players');
   if (lobby.players.length >= lobby.maxPlayers)
@@ -81,114 +81,89 @@ const joinLobby = async (lobbyId, userId) => {
 /**
  * Toggle player ready status
  */
-// const togglePlayerReady = async (lobbyId, userId) => {
-//   // Log the received lobbyId for debugging
-//   logger.info(
-//     `Toggle ready called with lobbyId: ${lobbyId} (type: ${typeof lobbyId})`
-//   );
+const togglePlayerReady = async (lobbyId, userId) => {
+  const lobby = await MultiplayerLobby.findById(lobbyId);
+  if (!lobby) throw new Error('Lobby not found when trying to toggle ready');
 
-//   if (!lobbyId) {
-//     throw new Error('Invalid lobby ID: ID is empty or undefined');
-//   }
+  const playerIndex = lobby.players.findIndex(
+    (p) => p.userId.toString() === userId.toString()
+  );
+  if (playerIndex === -1) throw new Error('Player not found in lobby');
 
-//   // Handle different types of IDs
-//   let query = {};
+  lobby.players[playerIndex].ready = !lobby.players[playerIndex].ready;
+  await lobby.save();
 
-//   // If it's already an ObjectId or a valid ObjectId string
-//   if (mongoose.Types.ObjectId.isValid(lobbyId)) {
-//     const objectId =
-//       typeof lobbyId === 'string' ? mongoose.Types.ObjectId(lobbyId) : lobbyId;
-
-//     query = { _id: objectId };
-//     logger.info(`Searching by ObjectId: ${objectId}`);
-//   }
-//   // If it's a string but not a valid ObjectId, try as lobbyCode
-//   else if (typeof lobbyId === 'string') {
-//     query = {
-//       $or: [{ lobbyCode: lobbyId.toUpperCase() }, { lobbyCode: lobbyId }],
-//     };
-//     logger.info(`Searching by lobbyCode: ${lobbyId}`);
-//   }
-//   // If it's an object with _id property (from frontend)
-//   else if (typeof lobbyId === 'object' && lobbyId._id) {
-//     const idValue = lobbyId._id.toString ? lobbyId._id.toString() : lobbyId._id;
-//     if (mongoose.Types.ObjectId.isValid(idValue)) {
-//       query = { _id: mongoose.Types.ObjectId(idValue) };
-//       logger.info(`Searching by extracted ObjectId: ${idValue}`);
-//     } else {
-//       throw new Error(`Invalid lobby ID format: ${JSON.stringify(lobbyId)}`);
-//     }
-//   } else {
-//     throw new Error(`Unsupported lobby ID format: ${JSON.stringify(lobbyId)}`);
-//   }
-
-//   // Add more detailed logging
-//   logger.info(`Query for finding lobby: ${JSON.stringify(query)}`);
-
-//   const lobby = await MultiplayerLobby.findOne(query);
-
-//   if (!lobby) {
-//     logger.error(`No lobby found with query: ${JSON.stringify(query)}`);
-//     throw new Error('Lobby not found');
-//   }
-
-//   logger.info(`Found lobby: ${lobby._id}`);
-
-//   const playerIndex = lobby.players.findIndex(
-//     (p) => p.userId.toString() === userId.toString()
-//   );
-
-//   if (playerIndex === -1) {
-//     throw new Error('Player not in lobby');
-//   }
-
-//   lobby.players[playerIndex].ready = !lobby.players[playerIndex].ready;
-//   await lobby.save();
-
-//   logger.info(
-//     `User ${userId} toggled ready status to ${lobby.players[playerIndex].ready} in lobby ${lobby._id}`
-//   );
-//   return lobby;
-// };
+  return lobby;
+};
 
 /**
  * Leave a lobby
  */
 const leaveLobby = async (lobbyId, userId) => {
-  const lobby = await MultiplayerLobby.findById(lobbyId);
-  if (!lobby) {
-    throw new Error('Lobby not found');
-  }
-
-  lobby.players = lobby.players.filter(
-    (p) => p.userId.toString() !== userId.toString()
-  );
-
-  if (lobby.ownerId.toString() === userId.toString()) {
-    if (lobby.players.length > 0) {
-      lobby.ownerId = lobby.players[0].userId;
-    } else {
-      await MultiplayerLobby.findByIdAndDelete(lobbyId);
-      logger.info(`Lobby ${lobbyId} deleted as all players left`);
+  try {
+    const lobby = await MultiplayerLobby.findById(lobbyId);
+    if (!lobby) {
+      logger.info(
+        `Lobby ${lobbyId} not found when user ${userId} tried to leave - it may have been deleted already`
+      );
       return null;
     }
-  }
 
-  await lobby.save();
-  logger.info(`User ${userId} left lobby ${lobbyId}`);
-  return lobby;
+    // Check if player is already removed
+    const playerExists = lobby.players.some(
+      (p) => p.userId.toString() === userId.toString()
+    );
+    if (!playerExists) {
+      logger.info(`User ${userId} already removed from lobby ${lobbyId}`);
+      return lobby;
+    }
+
+    lobby.players = lobby.players.filter(
+      (p) => p.userId.toString() !== userId.toString()
+    );
+
+    if (lobby.ownerId.toString() === userId.toString()) {
+      if (lobby.players.length > 0) {
+        lobby.ownerId = lobby.players[0].userId;
+        logger.info(
+          `Ownership of lobby ${lobbyId} transferred to ${lobby.ownerId}`
+        );
+      } else {
+        await MultiplayerLobby.findByIdAndDelete(lobbyId);
+        logger.info(`Lobby ${lobbyId} deleted as all players left`);
+        return null;
+      }
+    }
+
+    await lobby.save();
+    logger.info(`User ${userId} left lobby ${lobbyId}`);
+    return lobby;
+  } catch (err) {
+    logger.error(`Error in leaveLobby: ${err.message}`);
+    // Return null instead of throwing to prevent cascading errors
+    return null;
+  }
 };
 
 /**
  * Handle player disconnect
  */
 const handlePlayerDisconnect = async (userId) => {
-  const lobbies = await MultiplayerLobby.find({
-    'players.userId': userId,
-  });
+  try {
+    const lobbies = await MultiplayerLobby.find({
+      'players.userId': userId,
+    });
 
-  for (const lobby of lobbies) {
-    await leaveLobby(lobby._id, userId);
+    logger.info(
+      `Found ${lobbies.length} lobbies with user ${userId} during disconnect`
+    );
+
+    for (const lobby of lobbies) {
+      await leaveLobby(lobby._id, userId);
+    }
+  } catch (err) {
+    logger.error(`Error in handlePlayerDisconnect: ${err.message}`);
+    // Don't throw - we want disconnect handling to be resilient
   }
 };
 
@@ -196,6 +171,7 @@ module.exports = {
   createLobby,
   getLobby,
   joinLobby,
+  togglePlayerReady,
   leaveLobby,
   handlePlayerDisconnect,
 };
