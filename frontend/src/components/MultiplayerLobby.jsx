@@ -220,64 +220,64 @@ const MultiplayerLobby = ({ user, onBack, socket, setGameState }) => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {activeSection === 'join' && (
-        <div className="space-y-6">
-          <div className="bg-slate-800/50 p-6 rounded-xl border border-slate-700">
-            <h2 className="text-2xl font-bold text-amber-400 mb-6 text-center">Multiplayer</h2>
+        <div className="space-y-8">
+          <div className="bg-gray-800/30 p-8 rounded-2xl border border-white/10 backdrop-blur-lg shadow-2xl">
+            <h2 className="text-3xl font-bold text-center mb-8 bg-gradient-to-r from-amber-400 to-orange-400 bg-clip-text text-transparent">
+              Multiplayer Lobby
+            </h2>
             
-            <div className="space-y-4">
-              <div className="flex items-center gap-2 mb-6">
+            <div className="space-y-6">
+              <div className="flex items-center gap-3 mb-6">
                 <input
                   type="text"
                   placeholder="Enter lobby code..."
                   value={lobbyCode}
                   onChange={(e) => setLobbyCode(e.target.value.toUpperCase())}
-                  className="flex-1 px-4 py-3 bg-slate-700 rounded-lg border border-slate-600 focus:border-amber-400 focus:ring-2 focus:ring-amber-400/30 text-white"
+                  className="flex-1 px-5 py-3.5 bg-gray-700/30 rounded-xl border border-white/10 focus:border-amber-400/50 focus:ring-4 focus:ring-amber-400/20 text-white placeholder-gray-400 backdrop-blur-sm transition-all"
                   maxLength={6}
                 />
                 <button
                   onClick={joinLobbyByCode}
                   disabled={isJoining || !socket}
-                  className={`px-4 py-3 font-medium rounded-lg transition-colors ${
+                  className={`px-6 py-3.5 font-semibold rounded-xl transition-all ${
                     isJoining || !socket
                       ? 'bg-amber-500/50 cursor-not-allowed'
-                      : 'bg-amber-500 hover:bg-amber-400'
-                  } text-slate-900`}
+                      : 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-gray-900'
+                  }`}
                 >
                   {isJoining ? 'Joining...' : 'Join'}
                 </button>
               </div>
 
               <div className="relative flex items-center">
-                <div className="flex-grow border-t border-slate-600"></div>
-                <span className="flex-shrink mx-4 text-slate-400 text-sm">or</span>
-                <div className="flex-grow border-t border-slate-600"></div>
+                <div className="flex-grow border-t border-white/10"></div>
+                <span className="flex-shrink mx-4 text-gray-400 text-sm">or</span>
+                <div className="flex-grow border-t border-white/10"></div>
               </div>
 
               <button
                 onClick={() => setActiveSection('create')}
-                className="w-full py-3 bg-slate-800 hover:bg-slate-700 rounded-lg border-2 border-slate-700 hover:border-amber-400/30 transition-all flex flex-col items-center justify-center"
+                className="w-full py-4 bg-gray-700/30 hover:bg-gray-700/40 rounded-xl border-2 border-dashed border-white/10 hover:border-amber-400/30 transition-all flex items-center justify-center gap-3 group"
               >
-                <div className="flex items-center gap-2">
-                  <svg className="w-6 h-6 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                  <span className="text-slate-200 font-medium">Create New Lobby</span>
-                </div>
+                <svg className="w-6 h-6 text-amber-400 group-hover:text-amber-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+                </svg>
+                <span className="text-gray-200 group-hover:text-amber-100 font-medium">Create New Lobby</span>
               </button>
             </div>
 
             {error && (
-              <div className="p-3 bg-red-500/10 text-red-400 rounded-lg text-sm mt-4">
+              <div className="p-4 bg-red-500/10 border border-red-400/20 rounded-xl text-red-400 text-sm mt-6">
                 {error}
               </div>
             )}
             
-            <div className="mt-6">
+            <div className="mt-8">
               <button
                 onClick={onBack}
-                className="w-full py-3 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg transition-colors"
+                className="w-full py-3.5 bg-gray-700/30 hover:bg-gray-700/40 text-gray-300 rounded-xl transition-all border border-white/10 hover:border-amber-400/30"
               >
                 Back to Main Menu
               </button>
@@ -287,28 +287,29 @@ const MultiplayerLobby = ({ user, onBack, socket, setGameState }) => {
       )}
 
       {activeSection === 'create' && (
-        <div className="bg-slate-800/50 p-6 rounded-xl border border-slate-700">
-          <h2 className="text-2xl font-bold text-amber-400 mb-6 text-center">Create Lobby</h2>
-          <div className="space-y-5">
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-300">Lobby Settings</label>
-              <div className="grid grid-cols-2 gap-4">
+        <div className="bg-gray-800/30 p-8 rounded-2xl border border-white/10 backdrop-blur-lg shadow-2xl">
+          <h2 className="text-3xl font-bold text-center mb-8 bg-gradient-to-r from-amber-400 to-orange-400 bg-clip-text text-transparent">
+            Create Lobby
+          </h2>
+          <div className="space-y-8">
+            <div className="space-y-6">
+              <div className="grid grid-cols-2 gap-5">
                 {[
                   { label: 'Max Players', key: 'maxPlayers', options: [2, 3, 4, 5, 6] },
                   { label: 'Song Count', key: 'songCount', options: [3, 5, 7, 10] },
                   { label: 'Max Attempts', key: 'maxAttempts', options: [3, 5, 6] }
                 ].map((setting) => (
-                  <div key={setting.key} className="bg-slate-800 p-4 rounded-lg border border-slate-700">
-                    <label className="text-xs text-slate-400 mb-2 block">{setting.label}</label>
+                  <div key={setting.key} className="bg-gray-700/30 p-5 rounded-xl border border-white/10">
+                    <label className="text-sm text-amber-200/80 mb-3">{setting.label}</label>
                     <select
                       value={lobbySettings[setting.key]}
                       onChange={(e) =>
                         setLobbySettings({ ...lobbySettings, [setting.key]: parseInt(e.target.value) })
                       }
-                      className="w-full bg-transparent text-slate-200 text-sm focus:outline-none"
+                      className="w-full bg-gray-800/20 px-4 py-2.5 rounded-lg border border-white/10 text-gray-200 focus:border-amber-400/50 focus:ring-2 focus:ring-amber-400/20 transition-all"
                     >
                       {setting.options.map(opt => (
-                        <option key={opt} value={opt} className="bg-slate-800">{opt}</option>
+                        <option key={opt} value={opt} className="bg-gray-800">{opt}</option>
                       ))}
                     </select>
                   </div>
@@ -316,26 +317,23 @@ const MultiplayerLobby = ({ user, onBack, socket, setGameState }) => {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 mt-6">
+            <div className="grid grid-cols-2 gap-4">
               <button
                 onClick={() => setActiveSection('join')}
-                className="py-3 bg-slate-700/50 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors font-medium"
+                className="py-3.5 bg-gray-700/30 hover:bg-gray-700/40 text-gray-300 rounded-xl transition-all border border-white/10 hover:border-amber-400/30"
               >
                 Back
               </button>
               <button
                 onClick={createLobby}
                 disabled={isJoining || !socket}
-                className={`py-3 rounded-lg font-medium transition-colors ${
+                className={`py-3.5 rounded-xl font-semibold transition-all ${
                   isJoining || !socket
                     ? 'bg-amber-500/50 cursor-not-allowed'
-                    : 'bg-amber-500 hover:bg-amber-400'
-                } text-slate-900 flex items-center justify-center gap-2`}
+                    : 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-gray-900'
+                }`}
               >
                 {isJoining ? 'Creating...' : 'Create Lobby'}
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
               </button>
             </div>
           </div>
@@ -343,105 +341,111 @@ const MultiplayerLobby = ({ user, onBack, socket, setGameState }) => {
       )}
 
       {activeSection === 'lobby' && currentLobby && (
-        <div className="bg-slate-800/50 p-6 rounded-xl border border-slate-700">
-          <div className="flex items-center justify-between mb-6">
+        <div className="bg-gray-800/30 p-8 rounded-2xl border border-white/10 backdrop-blur-lg shadow-2xl">
+          <div className="flex items-center justify-between mb-8">
             <div>
-              <h2 className="text-xl font-bold text-amber-400">Lobby Code: {currentLobby.lobbyCode}</h2>
-              <p className="text-sm text-slate-400 mt-1">
+              <h2 className="text-2xl font-bold text-amber-400">Lobby Code: {currentLobby.lobbyCode}</h2>
+              <p className="text-sm text-gray-400 mt-2">
                 {currentLobby.players?.length || 0}/{currentLobby.maxPlayers} Players
               </p>
             </div>
             <button
               onClick={leaveLobby}
-              className="px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg transition-colors text-sm flex items-center gap-1.5"
+              className="px-5 py-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-xl transition-all border border-red-400/20 flex items-center gap-2"
             >
               Leave
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
               </svg>
             </button>
           </div>
 
-          <div className="mb-6">
-            <h3 className="text-sm font-medium text-slate-400 mb-3">Players</h3>
-            <div className="space-y-2">
+          <div className="mb-8">
+            <h3 className="text-sm font-semibold text-amber-200/80 mb-4">Players</h3>
+            <div className="space-y-3">
               {currentLobby.players?.map(player => (
                 <div 
                   key={player.userId || player.id}
-                  className={`p-3 rounded-lg flex items-center justify-between transition-colors ${
+                  className={`p-4 rounded-xl flex items-center justify-between transition-all ${
                     player.userId === user._id || player.id === user._id
-                      ? 'bg-amber-400/10 border border-amber-400/20' 
-                      : 'bg-slate-800/50'
+                      ? 'bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-400/20'
+                      : 'bg-gray-700/30 border border-white/5 hover:border-amber-400/30'
                   }`}
                 >
-                  <div className="flex items-center gap-3">
-                    <span className={`${(player.userId || player.id) === currentLobby.ownerId ? 'text-amber-400' : 'text-slate-200'}`}>
+                  <div className="flex items-center gap-4">
+                    <span className={`text-gray-200 ${
+                      (player.userId || player.id) === currentLobby.ownerId ? 'font-semibold text-amber-400' : ''
+                    }`}>
                       {player.email}
-                      {(player.userId || player.id) === currentLobby.ownerId && (
-                        <span className="ml-2 text-amber-400/50">👑 Host</span>
-                      )}
                     </span>
+                    {(player.userId || player.id) === currentLobby.ownerId && (
+                      <span className="text-xs px-2 py-1 bg-amber-400/10 text-amber-400 rounded-full">Host</span>
+                    )}
                   </div>
-                  <span className={`text-sm font-medium ${player.ready ? 'text-amber-400' : 'text-slate-400'}`}>
-                    {player.ready ? 'Ready' : 'Not Ready'}
+                  <span className={`text-sm font-medium ${
+                    player.ready ? 'text-green-400' : 'text-gray-400'
+                  }`}>
+                    {player.ready ? (
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                        Ready
+                      </div>
+                    ) : 'Not Ready'}
                   </span>
                 </div>
               ))}
             </div>
           </div>
-          <div className="mb-6">
+
+          <div className="mb-8">
             <button
               onClick={() => {
                 if (!socket || !currentLobby.lobbyId) return;
                 socket.emit('toggle-ready', currentLobby.lobbyId, (error) => {
-                  if (error) {
-                    setError(typeof error === 'string' ? error : error.message || 'Failed to update readiness');
-                  }
+                  if (error) setError(error.message || 'Failed to update readiness');
                 });
               }}
-              className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-slate-900 rounded-lg transition-colors"
+              className="w-full py-3.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-gray-900 rounded-xl transition-all font-semibold"
             >
-              {currentLobby.players?.find(player => (player.userId || player.id) === user._id)?.ready ? 'Not Ready' : 'Ready'}
+              {currentLobby.players?.find(p => (p.userId || p.id) === user._id)?.ready ? 'Mark Not Ready' : 'Mark Ready'}
             </button>
           </div>
-          
+
           {isUserHost() && allPlayersReady && (
-            <div className="mb-6">
+            <div className="mb-8">
               <button
                 onClick={startGame}
                 disabled={isStartingGame}
-                className={`w-full py-3 ${
+                className={`w-full py-3.5 rounded-xl font-semibold transition-all ${
                   isStartingGame 
                     ? 'bg-green-500/50 cursor-not-allowed' 
-                    : 'bg-green-500 hover:bg-green-400'
-                } text-slate-900 rounded-lg transition-colors flex items-center justify-center gap-2`}
+                    : 'bg-gradient-to-r from-green-500 to-cyan-500 hover:from-green-400 hover:to-cyan-400 text-gray-900'
+                }`}
               >
                 {isStartingGame ? (
-                  <>
-                    <svg className="animate-spin h-5 w-5 text-slate-900" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <div className="flex items-center justify-center gap-3">
+                    <svg className="animate-spin h-5 w-5 text-amber-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
-                    Starting...
-                  </>
-                ) : (
-                  'Start Game'
-                )}
+                    Starting Game...
+                  </div>
+                ) : 'Start Game'}
               </button>
             </div>
           )}
-          
-          <div className="border-t border-slate-700 pt-6">
+
+          <div className="border-t border-white/10 pt-8">
             <button
               onClick={onBack}
-              className="w-full py-3 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg transition-colors"
+              className="w-full py-3.5 bg-gray-700/30 hover:bg-gray-700/40 text-gray-300 rounded-xl transition-all border border-white/10 hover:border-amber-400/30"
             >
               Back to Main Menu
             </button>
           </div>
 
           {error && (
-            <div className="p-3 bg-red-500/10 text-red-400 rounded-lg text-sm mt-4">
+            <div className="mt-6 p-4 bg-red-500/10 border border-red-400/20 rounded-xl text-red-400 text-sm">
               {error}
             </div>
           )}

@@ -1,3 +1,4 @@
+// AuthProfile.jsx
 import { useState } from 'react';
 import axios from 'axios';
 
@@ -24,7 +25,6 @@ const AuthProfile = ({ user, setUser, onClose, stats }) => {
     }
   };
 
-  // Utility to format playtime (e.g., seconds to mm:ss)
   const formatPlaytime = (seconds) => {
     if (!seconds && seconds !== 0) return '-';
     const mins = Math.floor(seconds / 60);
@@ -33,55 +33,51 @@ const AuthProfile = ({ user, setUser, onClose, stats }) => {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[100]">
-      <div className="bg-slate-800 rounded-xl p-6 w-full max-w-md relative z-[110]">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
+      <div className="bg-gray-800/90 rounded-2xl p-8 w-full max-w-md relative z-[110] backdrop-blur-xl border border-white/10 shadow-2xl">
         <button 
           onClick={onClose}
-          className="absolute top-4 right-4 text-slate-400 hover:text-amber-400 transition-colors"
+          className="absolute top-6 right-6 text-gray-300 hover:text-amber-400 transition-colors p-1.5 hover:bg-white/5 rounded-lg"
         >
-          ✕
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
         </button>
         
         {user ? (
-          <div className="space-y-6">
-            <h2 className="text-3xl font-bold text-center mb-6 text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-400">
+          <div className="space-y-8">
+            <h2 className="text-3xl font-bold text-center bg-gradient-to-r from-amber-400 to-orange-400 bg-clip-text text-transparent">
               Player Stats
             </h2>
             
-            <div className="grid grid-cols-3 gap-4 mb-8">
-              <div className="bg-slate-700/50 p-4 rounded-lg text-center backdrop-blur-sm">
-                <div className="text-2xl font-bold text-amber-400 mb-1">{stats.gamesPlayed}</div>
-                <div className="text-xs uppercase tracking-wide text-slate-400">Games</div>
+            <div className="grid grid-cols-2 gap-4 mb-8">
+              <div className="bg-gradient-to-br from-amber-500/10 to-orange-500/10 p-5 rounded-xl border border-amber-400/20">
+                <div className="text-3xl font-bold text-amber-400 mb-2">{stats.gamesPlayed}</div>
+                <div className="text-xs font-semibold uppercase tracking-wider text-amber-400/80">Games Played</div>
               </div>
-              <div className="bg-slate-700/50 p-4 rounded-lg text-center backdrop-blur-sm">
-                <div className="text-2xl font-bold text-green-400 mb-1">{stats.correctGuesses}</div>
-                <div className="text-xs uppercase tracking-wide text-slate-400">Correct</div>
+              <div className="bg-gradient-to-br from-green-500/10 to-cyan-500/10 p-5 rounded-xl border border-green-400/20">
+                <div className="text-3xl font-bold text-green-400 mb-2">{stats.correctGuesses}</div>
+                <div className="text-xs font-semibold uppercase tracking-wider text-green-400/80">Correct Guesses</div>
               </div>
-              <div className="bg-slate-700/50 p-4 rounded-lg text-center backdrop-blur-sm">
-                <div className="text-2xl font-bold text-blue-400 mb-1">{stats.averageAttempts ? stats.averageAttempts.toFixed(1) : '-'}</div>
-                <div className="text-xs uppercase tracking-wide text-slate-400">Avg Tries</div>
+              <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 p-5 rounded-xl border border-blue-400/20">
+                <div className="text-3xl font-bold text-blue-400 mb-2">{stats.averageAttempts ? stats.averageAttempts.toFixed(1) : '-'}</div>
+                <div className="text-xs font-semibold uppercase tracking-wider text-blue-400/80">Avg Attempts</div>
+              </div>
+              <div className="bg-gradient-to-br from-purple-500/10 to-pink-500/10 p-5 rounded-xl border border-purple-400/20">
+                <div className="text-3xl font-bold text-purple-400 mb-2">{stats.winRate ? `${stats.winRate.toFixed(1)}%` : '-'}</div>
+                <div className="text-xs font-semibold uppercase tracking-wider text-purple-400/80">Win Rate</div>
               </div>
             </div>
 
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-3 bg-slate-700/30 rounded-lg hover:bg-slate-700/40 transition-colors">
-                <div className="flex items-center gap-2">
-                  <svg className="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="space-y-5">
+              <div className="flex items-center justify-between p-4 bg-gray-700/30 rounded-xl border border-white/5 hover:border-amber-400/30 transition-colors">
+                <div className="flex items-center gap-3">
+                  <svg className="w-6 h-6 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
                   </svg>
-                  <span className="text-slate-300">Total Playtime</span>
+                  <span className="text-gray-200">Total Playtime</span>
                 </div>
-                <span className="text-slate-400">{formatPlaytime(stats.totalPlaytime)}</span>
-              </div>
-
-              <div className="flex items-center justify-between p-3 bg-slate-700/30 rounded-lg hover:bg-slate-700/40 transition-colors">
-                <div className="flex items-center gap-2">
-                  <svg className="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                  </svg>
-                  <span className="text-slate-300">Win Rate</span>
-                </div>
-                <span className="text-slate-400">{stats.winRate ? `${stats.winRate.toFixed(1)}%` : '-'}</span>
+                <span className="text-amber-400 font-medium">{formatPlaytime(stats.totalPlaytime)}</span>
               </div>
             </div>
 
@@ -91,26 +87,26 @@ const AuthProfile = ({ user, setUser, onClose, stats }) => {
                 setUser(null);
                 onClose();
               }}
-              className="w-full py-3 bg-transparent border border-amber-400/30 hover:border-amber-400/50 text-amber-400 rounded-lg transition-all hover:bg-amber-400/10"
+              className="w-full py-3.5 bg-transparent border border-amber-400/30 hover:border-amber-400/50 text-amber-400 rounded-xl transition-all hover:bg-amber-400/10 font-medium"
             >
               Sign Out
             </button>
           </div>
         ) : (
-          <form onSubmit={handleAuth} className="space-y-4">
-            <h2 className="text-2xl font-bold text-center mb-4 text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-400">
+          <form onSubmit={handleAuth} className="space-y-6">
+            <h2 className="text-2xl font-bold text-center bg-gradient-to-r from-amber-400 to-orange-400 bg-clip-text text-transparent">
               {mode === 'login' ? 'Welcome Back' : 'Create Account'}
             </h2>
             
-            {error && <div className="text-red-400 text-sm text-center">{error}</div>}
+            {error && <div className="p-3 bg-red-500/10 text-red-400 rounded-lg text-sm text-center">{error}</div>}
             
-            <div className="space-y-3">
+            <div className="space-y-4">
               <input
                 type="email"
                 placeholder="Email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-4 py-3 bg-slate-700 rounded-lg border border-slate-600 focus:border-amber-400 focus:ring-2 focus:ring-amber-400/30 text-white transition-all"
+                className="w-full px-5 py-3.5 bg-gray-700/30 rounded-xl border border-white/10 focus:border-amber-400/50 focus:ring-4 focus:ring-amber-400/20 text-white placeholder-gray-400 backdrop-blur-sm transition-all"
                 required
               />
               <input
@@ -118,26 +114,26 @@ const AuthProfile = ({ user, setUser, onClose, stats }) => {
                 placeholder="Password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-3 bg-slate-700 rounded-lg border border-slate-600 focus:border-amber-400 focus:ring-2 focus:ring-amber-400/30 text-white transition-all"
+                className="w-full px-5 py-3.5 bg-gray-700/30 rounded-xl border border-white/10 focus:border-amber-400/50 focus:ring-4 focus:ring-amber-400/20 text-white placeholder-gray-400 backdrop-blur-sm transition-all"
                 required
               />
             </div>
             
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-4">
               <button
                 type="submit"
-                className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-slate-900 font-semibold rounded-lg transition-colors"
+                className="w-full py-3.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-gray-900 font-semibold rounded-xl transition-all transform hover:scale-[1.02] shadow-lg hover:shadow-amber-500/20"
               >
                 {mode === 'login' ? 'Sign In' : 'Get Started'}
               </button>
               <button
                 type="button"
                 onClick={() => setMode(mode === 'login' ? 'signup' : 'login')}
-                className="text-slate-400 hover:text-amber-300 text-sm text-center transition-colors"
+                className="text-gray-400 hover:text-amber-300 text-sm text-center transition-colors"
               >
                 {mode === 'login' 
-                  ? 'New here? Create an account'
-                  : 'Already have an account? Sign in'}
+                  ? 'New here? Create an account →'
+                  : 'Already have an account? Sign in →'}
               </button>
             </div>
           </form>
