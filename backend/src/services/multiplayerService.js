@@ -1,6 +1,9 @@
 const logger = require('../config/logger');
 const User = require('../models/userModel');
 const MultiplayerLobby = require('../models/multiplayerLobbyModel');
+const MultiplayerGame = require('../models/multiplayerGameModel');
+const { getDeezerPreview } = require('./deezerService');
+const { getRandomTracks } = require('./sessionService');
 
 /**
  * Create a new multiplayer lobby
@@ -43,6 +46,17 @@ const getLobby = async (lobbyId) => {
     throw new Error('Lobby not found when trying to get it');
   }
   return lobby;
+};
+
+/**
+ * Get a game by game ID
+ */
+const getGame = async (gameId) => {
+  const game = await MultiplayerGame.findById(gameId);
+  if (!game) {
+    throw new Error('Game not found when trying to get it');
+  }
+  return game;
 };
 
 /**
@@ -95,6 +109,83 @@ const togglePlayerReady = async (lobbyId, userId) => {
 
   return lobby;
 };
+
+/**
+ * Start the game if all players are ready
+ */
+async function startGame(lobbyId, userId) {
+  const lobby = await MultiplayerLobby.findById(lobbyId);
+  if (!lobby) throw new Error('Lobby not found');
+  if (lobby.ownerId.toString() !== userId.toString()) {
+    throw new Error('Only the lobby owner can start the game');
+  }
+  if (lobby.status !== 'waiting') {
+    throw new Error('Game already started or completed');
+  }
+  const allReady = lobby.players.every((p) => p.ready);
+  if (!allReady) {
+    throw new Error('All players are not ready');
+  }
+
+  const randomTracks = await getRandomTracks();
+  const desiredSongCount = lobby.gameSettings.songCount || 5;
+
+  const selectedTracks = [];
+  logger.info(
+    `Finding ${desiredSongCount} songs with previews for multiplayer game`
+  );
+
+  for (
+    let i = 0;
+    i < randomTracks.length && selectedTracks.length < desiredSongCount;
+    i++
+  ) {
+    const track = randomTracks[i];
+    const trackInfo = {
+      name: track.name,
+      artist: track.artist,
+      album_cover: track.album_cover || '',
+      preview_url: '',
+    };
+
+    try {
+      const preview = await getDeezerPreview(track.name, track.artist);
+      if (preview) {
+        trackInfo.preview_url = preview;
+        selectedTracks.push(trackInfo);
+        logger.info(`Found preview for "${track.name}" by ${track.artist}`);
+      } else {
+        logger.info(
+          `No preview found for "${track.name}" by ${track.artist}, skipping`
+        );
+      }
+    } catch (error) {
+      logger.error(
+        `Error getting preview for "${track.name}": ${error.message}`
+      );
+      continue;
+    }
+  }
+
+  const newGame = await MultiplayerGame.create({
+    lobbyId,
+    songs: randomTracks,
+    targetSongs: selectedTracks,
+    playerStates: lobby.players.map((p) => ({
+      userId: p.userId,
+      userEmail: p.email,
+      score: 0,
+      currentSongIndex: 0,
+      completedSongs: [],
+    })),
+    maxAttempts: lobby.gameSettings.maxAttempts,
+  });
+
+  lobby.status = 'in-game';
+  lobby.activeGameId = newGame._id;
+  await lobby.save();
+  return newGame;
+}
 
 /**
  * Leave a lobby
@@ -163,15 +254,16 @@ const handlePlayerDisconnect = async (userId) => {
     }
   } catch (err) {
     logger.error(`Error in handlePlayerDisconnect: ${err.message}`);
-    // Don't throw - we want disconnect handling to be resilient
   }
 };
 
 module.exports = {
   createLobby,
   getLobby,
+  getGame,
   joinLobby,
   togglePlayerReady,
   leaveLobby,
   handlePlayerDisconnect,
+  startGame,
 };

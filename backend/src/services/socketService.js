@@ -233,45 +233,16 @@ const init = (server) => {
           lobbyCode: lobbyIdString.slice(-6).toUpperCase(),
         });
 
-        // if all players are ready, notify the owner
+        // Check if all players are ready
         const allReady = lobby.players.every((p) => p.ready);
-        if (allReady) {
-          logger.info(
-            `All players ready in room ${lobbyIdString}, emitting event`
-          );
-          io.to(lobbyIdString).emit('all-players-ready');
-        }
+        
+        // Always emit the ready status - if true, show the button, if false, hide the button
+        logger.info(
+          `All players ready status in room ${lobbyIdString}: ${allReady ? 'Ready' : 'Not Ready'}`
+        );
+        io.to(lobbyIdString).emit('players-ready-status', { allReady });
       } catch (err) {
         logger.error(`Error toggling ready: ${err.message}`);
-        socket.emit('error', { message: err.message });
-      }
-    });
-
-    socket.on('start-game', async (lobbyId) => {
-      try {
-        logger.info(
-          `Start game request for lobby: ${lobbyId} by user: ${socket.user.email}`
-        );
-        const objectId = new mongoose.Types.ObjectId(lobbyId);
-
-        const lobby = await multiplayerService.startGame(
-          objectId,
-          socket.user._id
-        );
-
-        // get the string representation for room targeting
-        const lobbyIdString = lobbyId.toString ? lobbyId.toString() : lobbyId;
-        logger.info(`Emitting game-started event to room ${lobbyIdString}`);
-
-        io.to(lobbyIdString).emit('game-started', {
-          tracks: lobby.tracks,
-          gameSettings: lobby.gameSettings,
-          ownerId: lobby.ownerId,
-          maxPlayers: lobby.maxPlayers,
-          gameStartedAt: Date.now(),
-        });
-      } catch (err) {
-        logger.error(`Error starting game: ${err.message}`);
         socket.emit('error', { message: err.message });
       }
     });
@@ -285,7 +256,6 @@ const init = (server) => {
 
     socket.on('disconnect', async () => {
       try {
-        // find all lobbies the user is in and remove them
         await multiplayerService.handlePlayerDisconnect(socket.user._id);
         logger.info(
           `Socket disconnected: ${socket.id} - User: ${socket.user.email}`

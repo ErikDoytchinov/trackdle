@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import PropTypes from 'prop-types';
 
-const MultiplayerLobby = ({ user, onBack, socket }) => {
+const MultiplayerLobby = ({ user, onBack, socket, setGameState }) => {
   const [activeSection, setActiveSection] = useState('join');
   const [currentLobby, setCurrentLobby] = useState(null);
   const [lobbyCode, setLobbyCode] = useState('');
@@ -14,30 +14,54 @@ const MultiplayerLobby = ({ user, onBack, socket }) => {
   const [error, setError] = useState('');
   const [isJoining, setIsJoining] = useState(false);
   const [allPlayersReady, setAllPlayersReady] = useState(false);
+  const [isStartingGame, setIsStartingGame] = useState(false);
 
   const apiUrl = import.meta.env.VITE_API_URL;
 
-  const startGame = () => {
-    if (!socket || !currentLobby) {
-      setError("Socket connection not established or lobby is invalid");
+  // Function to check if the current user is the host
+  const isUserHost = () => {
+    return currentLobby && user && currentLobby.ownerId && 
+      (currentLobby.ownerId === user._id || currentLobby.ownerId.toString() === user._id.toString());
+  };
+
+  const startGame = async () => {
+    if (!currentLobby) {
+      setError("Lobby is invalid");
       return;
     }
 
-    socket.emit('start-game', currentLobby.lobbyId, (error, response) => {
-      if (error) {
-        setError(error.message || 'Failed to start game');
-        return;
-      }
-      console.log('Game started successfully');
-      setActiveSection('game');
-    });
+    try {
+      setError('');
+      setIsStartingGame(true);
+      
+      const response = await axios.post(
+        `${apiUrl}/multiplayer/game/${currentLobby.lobbyId}`,
+        {},
+        { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
+      );
+
+      const gameData = response.data;
+      
+      // The game will transition via socket event, but as a fallback we'll use this
+      setTimeout(() => {
+        setGameState({
+          gameStarted: true,
+          gameId: gameData.gameId,
+          lobbyId: currentLobby.lobbyId,
+          totalSongs: gameData.targetSongs?.length || gameData.songs?.length || currentLobby?.gameSettings?.songCount || 5,
+          
+        });
+      }, 500);
+    } catch (error) {
+      setError(error.response?.data?.message || 'Failed to start game');
+      setIsStartingGame(false);
+    }
   };
 
   useEffect(() => {
     if (!socket) return;
 
     const onError = (data) => {
-      console.error('Socket error:', data);
       setError(data.message || 'An error occurred');
       setIsJoining(false);
     };
@@ -57,23 +81,31 @@ const MultiplayerLobby = ({ user, onBack, socket }) => {
         
         // Preserve the lobby code and lobby id from the API if not provided by the socket event
         if (prev) {
-          updated.lobbyCode = prev.lobbyCode;
-          updated.lobbyId = prev.lobbyId;
+          updated.lobbyCode = updated.lobbyCode || prev.lobbyCode;
+          updated.lobbyId = updated.lobbyId || prev.lobbyId;
         }
         
         return updated;
       });
       
-      // Once we receive lobby data, switch to the lobby view and exit loading state.
       setActiveSection('lobby');
       setIsJoining(false);
-      // Reset the readiness state in case player readiness changes.
-      setAllPlayersReady(false);
     };
 
-    // When this event is received, it means all players are ready.
-    const onAllPlayersReady = () => {
-      setAllPlayersReady(true);
+    const onGameStarted = (data) => {
+      // Set up game state to transition to the game screen
+      setGameState({
+        gameStarted: true,
+        gameId: data.gameId,
+        lobbyId: currentLobby?.lobbyId || data.lobbyId,
+        totalSongs: data.totalSongs || data.targetSongs?.length || currentLobby?.gameSettings?.songCount || 5,
+        currentPreviewUrl: data.currentPreviewUrl,
+        leaderboard: data.leaderboard || []
+      });
+    };
+
+    const onPlayersReadyStatus = (data) => {
+      setAllPlayersReady(data.allReady);
     };
     
     const onLeftLobby = () => {
@@ -83,16 +115,18 @@ const MultiplayerLobby = ({ user, onBack, socket }) => {
     
     socket.on('error', onError);
     socket.on('lobby-update', onLobbyUpdate);
-    socket.on('all-players-ready', onAllPlayersReady);
+    socket.on('players-ready-status', onPlayersReadyStatus);
+    socket.on('game-started', onGameStarted);
     socket.on('left-lobby', onLeftLobby);
     
     return () => {
       socket.off('error', onError);
       socket.off('lobby-update', onLobbyUpdate);
-      socket.off('all-players-ready', onAllPlayersReady);
+      socket.off('players-ready-status', onPlayersReadyStatus);
+      socket.off('game-started', onGameStarted);
       socket.off('left-lobby', onLeftLobby);
     };
-  }, [socket]); 
+  }, [socket, currentLobby, setGameState]); 
 
   const createLobby = async () => {
     if (!socket) {
@@ -115,6 +149,8 @@ const MultiplayerLobby = ({ user, onBack, socket }) => {
           ...(prev || {}),
           lobbyCode: response.data.lobbyCode,
           lobbyId: response.data.lobbyId,
+          maxPlayers: response.data.maxPlayers,
+          gameSettings: response.data.gameSettings
         }));
       }
       
@@ -331,17 +367,17 @@ const MultiplayerLobby = ({ user, onBack, socket }) => {
             <div className="space-y-2">
               {currentLobby.players?.map(player => (
                 <div 
-                  key={player.userId}
+                  key={player.userId || player.id}
                   className={`p-3 rounded-lg flex items-center justify-between transition-colors ${
-                    player.userId === user._id 
+                    player.userId === user._id || player.id === user._id
                       ? 'bg-amber-400/10 border border-amber-400/20' 
                       : 'bg-slate-800/50'
                   }`}
                 >
                   <div className="flex items-center gap-3">
-                    <span className={`${player.userId === currentLobby.ownerId ? 'text-amber-400' : 'text-slate-200'}`}>
+                    <span className={`${(player.userId || player.id) === currentLobby.ownerId ? 'text-amber-400' : 'text-slate-200'}`}>
                       {player.email}
-                      {player.userId === currentLobby.ownerId && (
+                      {(player.userId || player.id) === currentLobby.ownerId && (
                         <span className="ml-2 text-amber-400/50">👑 Host</span>
                       )}
                     </span>
@@ -356,27 +392,45 @@ const MultiplayerLobby = ({ user, onBack, socket }) => {
           <div className="mb-6">
             <button
               onClick={() => {
+                if (!socket || !currentLobby.lobbyId) return;
                 socket.emit('toggle-ready', currentLobby.lobbyId, (error) => {
                   if (error) {
-                    setError(error.message || 'Failed to update readiness');
+                    setError(typeof error === 'string' ? error : error.message || 'Failed to update readiness');
                   }
                 });
               }}
               className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-slate-900 rounded-lg transition-colors"
             >
-              {currentLobby.players?.find(player => player.userId === user._id)?.ready ? 'Unready' : 'Ready'}
+              {currentLobby.players?.find(player => (player.userId || player.id) === user._id)?.ready ? 'Not Ready' : 'Ready'}
             </button>
           </div>
-          {currentLobby.ownerId === user._id && allPlayersReady && (
+          
+          {isUserHost() && allPlayersReady && (
             <div className="mb-6">
               <button
                 onClick={startGame}
-                className="w-full py-3 bg-green-500 hover:bg-green-400 text-slate-900 rounded-lg transition-colors"
+                disabled={isStartingGame}
+                className={`w-full py-3 ${
+                  isStartingGame 
+                    ? 'bg-green-500/50 cursor-not-allowed' 
+                    : 'bg-green-500 hover:bg-green-400'
+                } text-slate-900 rounded-lg transition-colors flex items-center justify-center gap-2`}
               >
-                Start Game
+                {isStartingGame ? (
+                  <>
+                    <svg className="animate-spin h-5 w-5 text-slate-900" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Starting...
+                  </>
+                ) : (
+                  'Start Game'
+                )}
               </button>
             </div>
           )}
+          
           <div className="border-t border-slate-700 pt-6">
             <button
               onClick={onBack}
@@ -400,7 +454,8 @@ const MultiplayerLobby = ({ user, onBack, socket }) => {
 MultiplayerLobby.propTypes = {
   user: PropTypes.object.isRequired,
   onBack: PropTypes.func.isRequired,
-  socket: PropTypes.object
+  socket: PropTypes.object,
+  setGameState: PropTypes.func.isRequired
 };
 
 export default MultiplayerLobby;

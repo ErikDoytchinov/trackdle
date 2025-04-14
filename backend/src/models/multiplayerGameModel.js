@@ -1,7 +1,13 @@
 const mongoose = require('mongoose');
 
 const songSchema = new mongoose.Schema({
-  title: { type: String, required: true },
+  name: { type: String, required: true },
+  artist: { type: String, required: true },
+  album_cover: { type: String },
+});
+
+const targetSongSchema = new mongoose.Schema({
+  name: { type: String, required: true },
   artist: { type: String, required: true },
   album_cover: { type: String },
   preview_url: { type: String, required: true },
@@ -19,6 +25,7 @@ const playerStateSchema = new mongoose.Schema({
     ref: 'User',
     required: true,
   },
+  userEmail: { type: String, required: true },
   currentSongIndex: { type: Number, default: 0 },
   score: { type: Number, default: 0 },
   completedSongs: [completedSongSchema],
@@ -37,7 +44,7 @@ const multiplayerGameSchema = new mongoose.Schema({
     default: 'in-progress',
   },
   songs: [songSchema],
-  currentSongIndex: { type: Number, default: 0 },
+  targetSongs: [targetSongSchema],
   playerStates: [playerStateSchema],
   maxAttempts: { type: Number, default: 5 },
   createdAt: { type: Date, default: Date.now },

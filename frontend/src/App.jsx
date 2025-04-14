@@ -65,8 +65,7 @@ const App = () => {
   useEffect(() => {
     if (user && !socket && state.mode === 'multiplayer') {
       const apiUrl = import.meta.env.VITE_API_URL;
-      console.log(`Connecting to socket at ${apiUrl}`);
-      
+            
       const newSocket = io(apiUrl, {
         auth: {
           token: localStorage.getItem('token')
@@ -79,14 +78,10 @@ const App = () => {
       });
     
       newSocket.on('connect', () => {
-        console.log('Socket connected successfully');
-        
-        // Setup a heartbeat to detect zombie connections
+                // Setup a heartbeat to detect zombie connections
         const heartbeatInterval = setInterval(() => {
-          newSocket.emit('ping', (response) => {
-            if (response && response.status === 'ok') {
-              console.log('Socket heartbeat successful');
-            }
+          newSocket.emit('ping', () => {
+            // Heartbeat successful
           });
         }, 30000);
         
@@ -94,16 +89,14 @@ const App = () => {
       });
       
       newSocket.on('connect_error', (error) => {
-        console.error('Socket connection error:', error.message);
-        setState(prev => ({ 
+                setState(prev => ({ 
           ...prev, 
           feedback: `Connection error: ${error.message}. Please try again.` 
         }));
       });
       
       newSocket.on('disconnect', (reason) => {
-        console.log(`Socket disconnected: ${reason}`);
-        if (newSocket.heartbeatInterval) {
+                if (newSocket.heartbeatInterval) {
           clearInterval(newSocket.heartbeatInterval);
         }
         
@@ -121,29 +114,118 @@ const App = () => {
         }
       });
       
-      newSocket.on('reconnect', (attemptNumber) => {
-        console.log(`Socket reconnected after ${attemptNumber} attempts`);
-        setState(prev => ({ 
+      newSocket.on('reconnect', () => {
+                setState(prev => ({ 
           ...prev, 
           feedback: 'Reconnected to game server!' 
         }));
       });
       
-      newSocket.on('reconnect_error', (error) => {
-        console.error('Socket reconnection error:', error);
+      newSocket.on('reconnect_error', () => {
+        setState(prev => ({ 
+          ...prev, 
+          feedback: 'Failed to reconnect. Please try again later.' 
+        }));
       });
       
       newSocket.on('reconnect_failed', () => {
-        console.error('Socket reconnection failed after maximum attempts');
-        setState(prev => ({ 
+                setState(prev => ({ 
           ...prev, 
           feedback: 'Failed to reconnect. Please refresh the page.' 
         }));
       });
       
       newSocket.on('error', (data) => {
-        console.error('Socket error:', data);
-        setState(prev => ({ ...prev, feedback: data.message }));
+                setState(prev => ({ ...prev, feedback: data.message }));
+      });
+
+      newSocket.on('game-started', (data) => {
+                if (data && data.gameId) {
+          // extract the first song's preview URL from targetSongs array
+          const firstSong = data.targetSongs && data.targetSongs.length > 0 
+            ? data.targetSongs[0] 
+            : null;
+            
+          setMpState(prev => ({
+            ...prev,
+            inLobby: false,
+            gameId: data.gameId,
+            isMultiplayerGame: true,
+            currentAttempt: 0,
+            currentSongComplete: false,
+            lobbyId: data.lobbyId,
+            totalSongs: data.targetSongs?.length || data.totalSongs || prev.totalSongs,
+            leaderboard: data.leaderboard || []
+          }));
+          
+          // Extract songs from data for recommendations
+          // Format songs for the recommendation dropdown
+          const songList = [];
+          
+          // Add songs from songs array if available
+          if (data.songs && Array.isArray(data.songs)) {
+            data.songs.forEach(song => {
+              if (song.name && song.artist) {
+                songList.push({
+                  id: `${song.name}-${song.artist}`.replace(/\s+/g, '-').toLowerCase(),
+                  name: song.name,
+                  artist: song.artist
+                });
+              }
+            });
+          }
+          
+          // Add songs from targetSongs array if available and different from songs
+          if (data.targetSongs && Array.isArray(data.targetSongs)) {
+            data.targetSongs.forEach(song => {
+              if (song.name && song.artist) {
+                // Check if this song is already in the list
+                const exists = songList.some(s => 
+                  s.name.toLowerCase() === song.name.toLowerCase() && 
+                  s.artist.toLowerCase() === song.artist.toLowerCase()
+                );
+                
+                if (!exists) {
+                  songList.push({
+                    id: `${song.name}-${song.artist}`.replace(/\s+/g, '-').toLowerCase(),
+                    name: song.name,
+                    artist: song.artist
+                  });
+                }
+              }
+            });
+          }
+          
+          setState(prev => ({
+            ...prev,
+            songData: { preview_url: firstSong?.preview_url || data.currentPreviewUrl },
+            snippetDuration: 1,
+            attempt: 0,
+            feedback: 'Game started! Listen to the first song.',
+            guess: '',
+            correctGuess: false,
+            history: [],
+            recommendedSongs: songList.length > 0 ? songList : prev.recommendedSongs
+          }));
+          
+          // Play the song snippet after a short delay
+          setTimeout(() => {
+            if (audioRef.current) {
+              audioRef.current.volume = volume;
+              playSnippet(1);
+            }
+          }, 50);
+        }
+      });
+      
+      // Listen for leaderboard updates
+      newSocket.on('leaderboard-update', (data) => {
+                if (data && data.leaderboard) {
+          setMpState(prev => ({
+            ...prev,
+            leaderboard: data.leaderboard
+          }));
+        }
       });
 
       setSocket(newSocket);
@@ -151,9 +233,7 @@ const App = () => {
     
     return () => {
       if (socket) {
-        console.log("Cleaning up socket connection");
-        
-        if (socket.heartbeatInterval) {
+                if (socket.heartbeatInterval) {
           clearInterval(socket.heartbeatInterval);
         }
       
@@ -423,6 +503,98 @@ const App = () => {
   const handleGuess = async (e) => {
     e.preventDefault();
     if (!state.songData || state.guess === undefined) return;
+    
+    // Handle multiplayer guess
+    if (mpState.isMultiplayerGame) {
+      try {
+        const { data } = await axios.post(
+          `${import.meta.env.VITE_API_URL}/multiplayer/game/${mpState.gameId}/guess`,
+          { guess: state.guess },
+          getAuthConfig()
+        );
+        
+        snippetProgress.clearProgress();
+        if (audioRef.current) {
+          audioRef.current.pause();
+          audioRef.current.currentTime = 0;
+        }
+        if (progressBarRef.current) {
+          progressBarRef.current.style.transition = 'none';
+          progressBarRef.current.style.width = '0%';
+        }
+        
+        const newHistory = [
+          ...state.history,
+          {
+            attempt: mpState.currentAttempt + 1,
+            type: 'guess',
+            value: state.guess,
+            correct: data.correct,
+          },
+        ];
+
+        if (data.correct) {
+          setState((prev) => ({
+            ...prev,
+            feedback: 'Correct!',
+            correctGuess: true,
+            correctSong: data.song,
+            songData: { preview_url: data.song.preview_url },
+            history: newHistory,
+          }));
+          
+          setMpState(prev => ({
+            ...prev,
+            currentSongComplete: true,
+            currentAttempt: 0,
+          }));
+        } else {
+          if (mpState.currentAttempt + 1 >= maxAttempts) {
+            setState((prev) => ({
+              ...prev,
+              feedback: 'Game over! The correct song was not guessed.',
+              correctGuess: true,
+              correctSong: data.song,
+              songData: { preview_url: data.song.preview_url },
+              history: newHistory,
+            }));
+            
+            setMpState(prev => ({
+              ...prev,
+              currentSongComplete: true,
+              currentAttempt: 0,
+            }));
+          } else {
+            setState((prev) => ({
+              ...prev,
+              feedback: 'Incorrect. Try again!',
+              history: newHistory,
+            }));
+            
+            // Increment the multiplayer attempt
+            setMpState(prev => ({
+              ...prev,
+              currentAttempt: prev.currentAttempt + 1,
+            }));
+            
+            const newDuration = state.snippetDuration * 2;
+            setState(prev => ({
+              ...prev,
+              snippetDuration: newDuration,
+              guess: '',
+            }));
+            setInputValue('');
+            playSnippet(newDuration);
+          }
+        }
+      } catch (error) {
+        console.error(error);
+        setState((prev) => ({ ...prev, feedback: 'Error processing guess.' }));
+      }
+      return;
+    }
+    
+    // Regular non-multiplayer guess handling
     try {
       const { data } = await axios.post(
         `${import.meta.env.VITE_API_URL}/session/${state.sessionId}/guess`,
@@ -487,6 +659,92 @@ const App = () => {
   };
 
   const handleSkip = async () => {  
+    // Handle multiplayer skip
+    if (mpState.isMultiplayerGame) {
+      try {
+        const { data } = await axios.post(
+          `${import.meta.env.VITE_API_URL}/multiplayer/game/${mpState.gameId}/guess`,
+          { skip: true },
+          getAuthConfig()
+        );
+        
+        snippetProgress.clearProgress();
+        if (audioRef.current) {
+          audioRef.current.pause();
+          audioRef.current.currentTime = 0;
+        }
+        if (progressBarRef.current) {
+          progressBarRef.current.style.transition = 'none';
+          progressBarRef.current.style.width = '0%';
+        }
+        
+        const newHistory = [
+          ...state.history,
+          { attempt: mpState.currentAttempt + 1, type: 'skip', value: 'Skipped' },
+        ];
+        
+        if (data.gameOver) {
+          setState((prev) => ({
+            ...prev,
+            feedback: 'Game over! The song has been revealed.',
+            correctGuess: true,
+            correctSong: data.song,
+            songData: { preview_url: data.song.preview_url },
+            history: newHistory,
+          }));
+          
+          setMpState(prev => ({
+            ...prev,
+            currentSongComplete: true,
+            currentAttempt: 0,
+          }));
+        } else {
+          if (mpState.currentAttempt + 1 >= maxAttempts) {
+            setState((prev) => ({
+              ...prev,
+              feedback: 'Game over! The correct song was not guessed.',
+              correctGuess: true,
+              correctSong: data.song,
+              songData: { preview_url: data.song.preview_url },
+              history: newHistory,
+            }));
+            
+            setMpState(prev => ({
+              ...prev,
+              currentSongComplete: true,
+              currentAttempt: 0,
+            }));
+          } else {
+            setState((prev) => ({
+              ...prev,
+              feedback: 'Skipped.',
+              history: newHistory,
+            }));
+            
+            // Increment the multiplayer attempt
+            setMpState(prev => ({
+              ...prev,
+              currentAttempt: prev.currentAttempt + 1,
+            }));
+            
+            const newDuration = state.snippetDuration * 2;
+            setState(prev => ({
+              ...prev,
+              snippetDuration: newDuration,
+              guess: '',
+            }));
+            setInputValue('');
+            playSnippet(newDuration);
+          }
+        }
+      } catch (error) {
+        console.error(error);
+        setState((prev) => ({ ...prev, feedback: 'Error processing skip.' }));
+      }
+      return;
+    }
+    
+    // Regular non-multiplayer skip handling  
     try {
       const { data } = await axios.post(
         `${import.meta.env.VITE_API_URL}/session/${state.sessionId}/guess`,
@@ -549,6 +807,7 @@ const App = () => {
     setShowAuth(true);
   };
   
+  // Update the setGameState function to properly handle API responses
   const setGameState = useCallback((gameState) => {
     if (gameState.gameStarted) {
       setMpState(prev => ({
@@ -559,7 +818,8 @@ const App = () => {
         currentAttempt: 0,
         currentSongComplete: false,
         lobbyId: gameState.lobbyId || prev.lobbyId,
-        totalSongs: gameState.totalSongs || prev.totalSongs
+        totalSongs: gameState.totalSongs || prev.totalSongs,
+        leaderboard: gameState.leaderboard || prev.leaderboard
       }));
       
       if (gameState.currentPreviewUrl) {
@@ -646,6 +906,7 @@ const App = () => {
             user={user}
             onBack={handleBack}
             socket={socket}
+            setGameState={setGameState}
           />
         ) : (
           <>
@@ -825,8 +1086,63 @@ const App = () => {
                           fullProgressBarRef={progressBarRef}
                         />
                         {mpState.isMultiplayerGame && mpState.currentSongComplete ? (
-                          <div className="text-center">
-                            <p className="text-slate-400 mb-4">Waiting for other players...</p>
+                          <div className="text-center mt-4">
+                            <p className="text-slate-400 mb-4">
+                              {mpState.currentSongIndex + 1 >= mpState.totalSongs 
+                                ? 'Game completed! Final results:' 
+                                : 'Ready for the next song?'}
+                            </p>
+                            
+                            {mpState.currentSongIndex + 1 < mpState.totalSongs && (
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    const response = await axios.get(
+                                      `${import.meta.env.VITE_API_URL}/multiplayer/game/${mpState.gameId}/next`,
+                                      getAuthConfig()
+                                    );
+                                    
+                                    if (response.data && response.data.song) {
+                                      setMpState(prev => ({
+                                        ...prev,
+                                        currentSongIndex: prev.currentSongIndex + 1,
+                                        currentSongComplete: false,
+                                        currentAttempt: 0,
+                                        leaderboard: response.data.leaderboard || prev.leaderboard
+                                      }));
+                                      
+                                      setState(prev => ({
+                                        ...prev,
+                                        songData: { preview_url: response.data.song.preview_url },
+                                        snippetDuration: 1,
+                                        correctGuess: false,
+                                        correctSong: null,
+                                        guess: '',
+                                        feedback: 'Listen to the next song!',
+                                        history: []
+                                      }));
+                                      
+                                      // Play the song snippet after a short delay
+                                      setTimeout(() => {
+                                        if (audioRef.current) {
+                                          audioRef.current.volume = volume;
+                                          playSnippet(1);
+                                        }
+                                      }, 50);
+                                    }
+                                  } catch (error) {
+                                    console.error('Error fetching next song:', error);
+                                    setState(prev => ({ 
+                                      ...prev, 
+                                      feedback: 'Error loading next song. Please try again.' 
+                                    }));
+                                  }
+                                }}
+                                className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-slate-900 font-semibold rounded-lg transition-colors"
+                              >
+                                Next Song
+                              </button>
+                            )}
                           </div>
                         ) : (
                           <button
