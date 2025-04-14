@@ -2,13 +2,14 @@ const moment = require('moment');
 const DailySong = require('../models/dailySongModel');
 const { getRandomTracks } = require('../services/sessionService');
 const { getDeezerPreview } = require('../services/deezerService');
+const logger = require('../config/logger');
 
 async function generateDailySong() {
   const today = moment().utc().format('YYYY-MM-DD');
 
   const existing = await DailySong.findOne({ date: today });
   if (existing) {
-    console.log(`Daily song for ${today} already exists.`);
+    logger.info(`Daily song for ${today} already exists.`);
     return;
   }
 
@@ -24,7 +25,7 @@ async function generateDailySong() {
   }
 
   if (!target) {
-    console.error(
+    logger.error(
       'Could not find a song with a valid preview for the daily song.'
     );
     return;
@@ -41,7 +42,7 @@ async function generateDailySong() {
   });
 
   await dailySong.save();
-  console.log(`Daily song for ${today} has been generated.`);
+  logger.info(`Daily song for ${today} has been generated.`);
 }
 
 module.exports = generateDailySong;

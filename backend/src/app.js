@@ -46,7 +46,7 @@ function createApp() {
     '0 0 * * *',
     async () => {
       await User.updateMany({}, { canPlayDaily: true });
-      console.log('Daily play flag reset for all users.');
+      logger.info('Daily play flag reset for all users.');
       generateDailySong();
       logger.info('Daily song generated.');
     },
@@ -54,17 +54,6 @@ function createApp() {
       timezone: 'UTC',
     }
   );
-
-  // (async () => {
-  //   try {
-  //     await User.updateMany({}, { canPlayDaily: true });
-  //     console.log('Daily play flag reset for all users. (Startup run)');
-  //     await generateDailySong();
-  //     logger.info('Daily song generated. (Startup run)');
-  //   } catch (err) {
-  //     logger.error('Error running daily job at startup:', err);
-  //   }
-  // })();
 
   const mongoURI =
     process.env.MONGO_URI || 'mongodb://localhost:27017/trackdle';
