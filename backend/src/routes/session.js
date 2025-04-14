@@ -6,7 +6,7 @@ const {
   postGuess,
   postNextTarget,
 } = require('../controllers/sessionController');
-const { optionalProtect } = require('../../middleware/optionalMiddleware');
+const { optionalProtect } = require('../middleware/optionalMiddleware');
 
 router.post('/', optionalProtect, postSession);
 router.get('/:session_id', getSession);
