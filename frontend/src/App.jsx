@@ -9,6 +9,7 @@ import useAudioProgress from './hooks/useAudioProgress';
 import AuthProfile from './components/AuthProfile';
 import { io } from 'socket.io-client';
 import PropTypes from 'prop-types';
+import DropdownMenuPortal from './components/DropdownMenuPortal';
 
 const App = () => {
   const [state, setState] = useState({
@@ -56,6 +57,24 @@ const App = () => {
   const progressBarRef = useRef(null);
   const maxAttempts = 5;
   const snippetProgress = useAudioProgress(audioRef, progressBarRef);
+
+  const playSnippet = useCallback(
+    (duration) => {
+      if (!audioRef.current || !progressBarRef.current) return;
+      snippetProgress.clearProgress();
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      // Ensure volume is set before playing
+      audioRef.current.volume = volume;
+      progressBarRef.current.style.transition = 'none';
+      progressBarRef.current.style.width = '0%';
+      progressBarRef.current.offsetWidth; // trigger reflow
+      progressBarRef.current.style.transition = 'width 0.05s linear';
+      audioRef.current.play().catch(console.error);
+      snippetProgress.updateProgress(duration, 0);
+    },
+    [snippetProgress, volume]
+  );
 
   const getAuthConfig = useCallback(() => {
     const token = localStorage.getItem('token');
@@ -157,9 +176,7 @@ const App = () => {
             totalSongs: data.targetSongs?.length || data.totalSongs || prev.totalSongs,
             leaderboard: data.leaderboard || []
           }));
-          
-          // Extract songs from data for recommendations
-          // Format songs for the recommendation dropdown
+
           const songList = [];
           
           // Add songs from songs array if available
@@ -249,7 +266,7 @@ const App = () => {
         setSocket(null);
       }
     };
-  }, [user, state.mode]);
+  }, [user, state.mode, socket, playSnippet, volume]);
 
   useEffect(() => {
     const fetchUserAndStats = async () => {
@@ -266,7 +283,7 @@ const App = () => {
             getAuthConfig()
           );
           setStats(statsResponse.data);
-        } catch (err) {
+        } catch (error) {
           localStorage.removeItem('token');
         }
       }
@@ -293,24 +310,6 @@ const App = () => {
       song.name.toLowerCase().includes(inputValue.toLowerCase())
     );
   }, [inputValue, state.recommendedSongs]);
-
-  const playSnippet = useCallback(
-    (duration) => {
-      if (!audioRef.current || !progressBarRef.current) return;
-      snippetProgress.clearProgress();
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
-      // Ensure volume is set before playing
-      audioRef.current.volume = volume;
-      progressBarRef.current.style.transition = 'none';
-      progressBarRef.current.style.width = '0%';
-      progressBarRef.current.offsetWidth; // trigger reflow
-      progressBarRef.current.style.transition = 'width 0.05s linear';
-      audioRef.current.play().catch(console.error);
-      snippetProgress.updateProgress(duration, 0);
-    },
-    [snippetProgress, volume] // Add volume as a dependency
-  );
 
   useEffect(() => {
     if (audioRef.current) {
@@ -883,6 +882,9 @@ const App = () => {
     }
   }, [state.songData, volume]);
 
+  // Add this ref for the input anchor
+  const inputAnchorRef = useRef(null);
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-space-900 to-stone-900 flex items-center justify-center p-4 relative overflow-hidden">
       {/* Animated background elements */}
@@ -923,7 +925,7 @@ const App = () => {
               strokeLinejoin="round"
               strokeWidth={2}
               d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
-            />
+          />
           </svg>
         )}
       </button>
@@ -1077,7 +1079,7 @@ const App = () => {
                         isOpen={isDropdownOpen}
                         onOuterClick={() => setIsDropdownOpen(false)}
                         onStateChange={(changes) => {
-                          if (changes.hasOwnProperty('isOpen')) {
+                          if (Object.prototype.hasOwnProperty.call(changes, 'isOpen')) {
                             setIsDropdownOpen(changes.isOpen);
                           }
                           if (changes.type === Downshift.stateChangeTypes.keyDownEscape) {
@@ -1089,12 +1091,12 @@ const App = () => {
                         {({
                           getInputProps,
                           getItemProps,
-                          getMenuProps,
                           isOpen,
                           highlightedIndex,
                         }) => (
                           <div className="relative">
                             <input
+                              ref={inputAnchorRef}
                               {...getInputProps({
                                 placeholder: 'Guess the song...',
                                 className: "w-full px-4 py-3 rounded-xl bg-gray-700/30 border border-white/10 focus:border-amber-400/50 focus:ring-4 focus:ring-amber-400/20 text-white placeholder-gray-400 backdrop-blur-sm transition-all text-sm md:text-base",
@@ -1105,27 +1107,28 @@ const App = () => {
                                 },
                               })}
                             />
-                            <ul
-                              {...getMenuProps()}
-                              className="absolute z-20 w-full mt-2 bg-gray-800/90 rounded-xl overflow-hidden shadow-lg max-h-40 md:max-h-48 overflow-y-auto backdrop-blur-lg border border-white/10"
+                            {/* Portal-based dropdown */}
+                            <DropdownMenuPortal
+                              anchorRef={inputAnchorRef}
+                              isOpen={isOpen && filteredSongs.length > 0}
+                              className="bg-gray-800/90 rounded-xl overflow-hidden shadow-lg max-h-40 md:max-h-48 overflow-y-auto backdrop-blur-lg border border-white/10"
                             >
-                              {isOpen &&
-                                filteredSongs.map((song, index) => (
-                                  <li
-                                    {...getItemProps({
-                                      key: song.id,
-                                      index,
-                                      item: song,
-                                      className: `px-4 py-3 cursor-pointer border-t border-white/10 first:border-t-0 transition-colors ${
-                                        highlightedIndex === index ? 'bg-gray-700/50' : 'hover:bg-gray-700/30'
-                                      }`,
-                                    })}
-                                  >
-                                    <div className="text-gray-100">{song.name}</div>
-                                    <div className="text-sm text-gray-400">{song.artist}</div>
-                                  </li>
-                                ))}
-                            </ul>
+                              {filteredSongs.map((song, index) => (
+                                <li
+                                  {...getItemProps({
+                                    key: song.id,
+                                    index,
+                                    item: song,
+                                    className: `px-4 py-3 cursor-pointer border-t border-white/10 first:border-t-0 transition-colors ${
+                                      highlightedIndex === index ? 'bg-gray-700/50' : 'hover:bg-gray-700/30'
+                                    }`,
+                                  })}
+                                >
+                                  <div className="text-gray-100">{song.name}</div>
+                                  <div className="text-sm text-gray-400">{song.artist}</div>
+                                </li>
+                              ))}
+                            </DropdownMenuPortal>
                           </div>
                         )}
                       </Downshift>
