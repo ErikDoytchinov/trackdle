@@ -8,12 +8,25 @@ const mongoose = require('mongoose');
 const cron = require('node-cron');
 const User = require('./models/userModel');
 const generateDailySong = require('./scheduler/dailySongScheduler');
+const DailySong = require('./models/dailySongModel');
+const moment = require('moment');
 
 const allowedOrigins = [
   'https://trackdle.doytchinov.eu',
   'https://www.trackdle.doytchinov.eu',
   'http://localhost:5173',
 ];
+
+async function ensureDailySongExists() {
+  const today = moment().utc().format('YYYY-MM-DD');
+  const existing = await DailySong.findOne({ date: today });
+  if (!existing) {
+    logger.info(`No daily song found for ${today}, generating one now...`);
+    await generateDailySong();
+  } else {
+    logger.info(`Daily song for ${today} already exists.`);
+  }
+}
 
 function createApp() {
   const app = express();
@@ -41,37 +54,39 @@ function createApp() {
 
   app.use(express.json({ limit: '5mb' }));
 
-  // schedule a job to run every day at midnight (server time or adjust for UTC)
+  // Schedule jobs to run at midnight and noon UTC every day
   cron.schedule(
-    '0 0 * * *',
+    '0 0,12 * * *',
     async () => {
-      await User.updateMany({}, { canPlayDaily: true });
-      console.log('Daily play flag reset for all users.');
-      generateDailySong();
-      logger.info('Daily song generated.');
+      // At midnight, reset the daily flag for all users
+      if (new Date().getUTCHours() === 0) {
+        await User.updateMany({}, { canPlayDaily: true });
+        logger.info('Daily play flag reset for all users.');
+      }
+      
+      // Both at midnight and noon, ensure daily song exists
+      await ensureDailySongExists();
     },
     {
       timezone: 'UTC',
     }
   );
 
-  // (async () => {
-  //   try {
-  //     await User.updateMany({}, { canPlayDaily: true });
-  //     console.log('Daily play flag reset for all users. (Startup run)');
-  //     await generateDailySong();
-  //     logger.info('Daily song generated. (Startup run)');
-  //   } catch (err) {
-  //     logger.error('Error running daily job at startup:', err);
-  //   }
-  // })();
-
   const mongoURI =
     process.env.MONGO_URI || 'mongodb://localhost:27017/trackdle';
 
   mongoose
     .connect(mongoURI)
-    .then(() => logger.info('MongoDB connected'))
+    .then(async () => {
+      logger.info('MongoDB connected');
+      
+      // Check for today's daily song on server startup
+      try {
+        await ensureDailySongExists();
+      } catch (err) {
+        logger.error(`Error ensuring daily song exists on startup: ${err.message}`);
+      }
+    })
     .catch((err) => logger.error('MongoDB connection error:', err));
 
   app.use('/', routes);

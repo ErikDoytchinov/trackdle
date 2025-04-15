@@ -86,7 +86,7 @@ async function fetchBasicPlaylistTracks(url) {
           name: item.track.name,
           artist: item.track.artists.map(a => a.name).join(', '),
           album_cover: item.track.album.images[0]?.url,
-          popularity: item.track.popularity, // Popularity score (0-100)
+          popularity: item.track.popularity, // popularity score (0-100)
         }))
     );
 

@@ -70,6 +70,7 @@ exports.getMe = async (req, res) => {
     }
     res.json({
       user: {
+        _id: user._id,
         email: user.email,
         gamesPlayed: user.gamesPlayed,
         correctGuesses: user.correctGuesses,
