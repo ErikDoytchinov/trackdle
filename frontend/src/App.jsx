@@ -49,8 +49,11 @@ const App = () => {
     isMultiplayerGame: false,
     currentGuess: '',
     currentAttempt: 0,
-    currentSongComplete: false
+    currentSongComplete: false,
+    gameOver: false,
+    finalLeaderboard: null 
   });
+
   const [socket, setSocket] = useState(null);
 
   const audioRef = useRef(null);
@@ -245,6 +248,20 @@ const App = () => {
         }
       });
 
+      newSocket.on('game-over', (data) => {
+        console.log('Game over event received:', data);
+        setMpState(prev => ({
+          ...prev,
+          gameOver: true,
+          finalLeaderboard: data?.leaderboard || prev.leaderboard
+        }));
+        setState(prev => ({
+          ...prev,
+          feedback: 'Game over! Final results are in.',
+          correctGuess: true
+        }));
+      });
+
       setSocket(newSocket);
     }
     
@@ -428,6 +445,19 @@ const App = () => {
           getAuthConfig()
         );
         
+        if (response.data.gameCompleted) {
+          setMpState(prev => ({
+            ...prev,
+            gameOver: true,
+            finalLeaderboard: response.data.leaderboard || prev.leaderboard
+          }));
+          setState(prev => ({
+            ...prev,
+            feedback: 'Game completed! Final results are in.'
+          }));
+          return;
+        }
+        
         if (response.data && response.data.song) {
           setMpState(prev => ({
             ...prev,
@@ -525,7 +555,9 @@ const App = () => {
       isMultiplayerGame: false,
       currentGuess: '',
       currentAttempt: 0,
-      currentSongComplete: false
+      currentSongComplete: false,
+      gameOver: false,
+      finalLeaderboard: null
     });
     
     if (socket) {
@@ -536,9 +568,7 @@ const App = () => {
 
   const handleGuess = async (e) => {
     e.preventDefault();
-    if (!state.songData || state.guess === undefined) return;
     
-    // Handle multiplayer guess
     if (mpState.isMultiplayerGame) {
       try {
         const { data } = await axios.post(
@@ -582,6 +612,15 @@ const App = () => {
             currentSongComplete: true,
             currentAttempt: 0,
           }));
+          
+          // Check if this was the last song and update gameOver state if needed
+          if (data.gameCompleted) {
+            setMpState(prev => ({
+              ...prev,
+              gameOver: true,
+              finalLeaderboard: data.leaderboard || prev.leaderboard
+            }));
+          }
         } else {
           if (mpState.currentAttempt + 1 >= maxAttempts) {
             setState((prev) => ({
@@ -732,6 +771,15 @@ const App = () => {
             currentSongComplete: true,
             currentAttempt: 0,
           }));
+          
+          // Check if this was the last song and update gameOver state if needed
+          if (data.gameCompleted) {
+            setMpState(prev => ({
+              ...prev,
+              gameOver: true,
+              finalLeaderboard: data.leaderboard || prev.leaderboard
+            }));
+          }
         } else {
           if (mpState.currentAttempt + 1 >= maxAttempts) {
             setState((prev) => ({
@@ -956,6 +1004,33 @@ const App = () => {
             socket={socket}
             setGameState={setGameState}
           />
+        ) : mpState.isMultiplayerGame && mpState.gameOver ? (
+          // Multiplayer Game Over Screen
+          <div className="text-center space-y-8 py-8">
+            <h2 className="text-2xl md:text-3xl font-bold text-amber-400 mb-4">Game Over!</h2>
+            <div className="bg-gray-700/30 rounded-xl p-6 border border-white/10 max-w-md mx-auto">
+              <h3 className="text-lg md:text-xl text-amber-300 mb-4">Final Leaderboard</h3>
+              <div className="space-y-2">
+                {(mpState.finalLeaderboard || mpState.leaderboard).map((player, idx) => (
+                  <div key={player.email || idx} className="flex justify-between items-center bg-gray-800/40 p-4 rounded-xl border border-white/10 hover:border-amber-400/30 transition-colors">
+                    <span className="text-gray-200">{player.email}</span>
+                    <span className="text-amber-400 font-medium flex items-center gap-2">
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                      </svg>
+                      {player.score}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <button
+              onClick={handleBack}
+              className="w-full mt-8 py-3 md:py-4 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-gray-900 font-semibold rounded-xl transition-all transform hover:scale-[1.02] shadow-lg hover:shadow-amber-500/20"
+            >
+              Back to Menu
+            </button>
+          </div>
         ) : (
           <>
             {!state.songData ? (

@@ -201,7 +201,38 @@ const postGuess = async (req, res) => {
           );
         }
 
-        // Return the current song details so frontend can show the answer
+        // after all guess/skip/advance logic, check if all players are finished
+        // (i.e., their currentSongIndex >= game.targetSongs.length)
+        const freshGameFinal = await MultiplayerGame.findById(game._id);
+        const allPlayersFinished = freshGameFinal.playerStates.every(
+          (ps) => ps.currentSongIndex >= freshGameFinal.targetSongs.length
+        );
+        if (allPlayersFinished && freshGameFinal.status !== 'completed') {
+          freshGameFinal.status = 'completed';
+          freshGameFinal.completedAt = new Date();
+          await freshGameFinal.save();
+          const finalLeaderboard = freshGameFinal.playerStates
+            .map((ps) => ({
+              userId: ps.userId,
+              email: ps.userEmail,
+              score: ps.score,
+            }))
+            .sort((a, b) => b.score - a.score);
+          try {
+            const io = socketService.getIO();
+            if (io) {
+              io.to(freshGameFinal.lobbyId.toString()).emit('game-over', {
+                leaderboard: finalLeaderboard,
+                gameId: freshGameFinal._id,
+              });
+            }
+          } catch (socketError) {
+            logger.error(
+              `Error broadcasting game-over event: ${socketError.message}`
+            );
+          }
+        }
+
         return res.status(200).json({
           success: true,
           correct: false,
@@ -240,12 +271,8 @@ const postGuess = async (req, res) => {
         playerState.currentSongAttempts = 0;
         await game.save();
 
-        // Check if player has completed all songs
         const isGameOver =
           playerState.currentSongIndex >= game.targetSongs.length;
-
-        // Generate leaderboard data for all players
-        // First get fresh game data from database to ensure latest scores
         const freshGame = await MultiplayerGame.findById(game._id);
         const leaderboard = freshGame.playerStates.map((ps) => ({
           userId: ps.userId,
@@ -253,10 +280,8 @@ const postGuess = async (req, res) => {
           score: ps.score,
         }));
 
-        // Sort by score in descending order
         leaderboard.sort((a, b) => b.score - a.score);
 
-        // Try to broadcast updated leaderboard to all players
         try {
           const io = socketService.getIO();
           if (io) {
@@ -269,6 +294,40 @@ const postGuess = async (req, res) => {
           logger.error(
             `Error broadcasting leaderboard update: ${socketError.message}`
           );
+        }
+
+        // After all guess/skip/advance logic, check if all players are finished
+        // (i.e., their currentSongIndex >= game.targetSongs.length)
+        const freshGameFinal = await MultiplayerGame.findById(game._id);
+        const allPlayersFinished = freshGameFinal.playerStates.every(
+          (ps) => ps.currentSongIndex >= freshGameFinal.targetSongs.length
+        );
+        if (allPlayersFinished && freshGameFinal.status !== 'completed') {
+          freshGameFinal.status = 'completed';
+          freshGameFinal.completedAt = new Date();
+          await freshGameFinal.save();
+          // Prepare final leaderboard
+          const finalLeaderboard = freshGameFinal.playerStates
+            .map((ps) => ({
+              userId: ps.userId,
+              email: ps.userEmail,
+              score: ps.score,
+            }))
+            .sort((a, b) => b.score - a.score);
+          // Emit game-over event to all players in the lobby
+          try {
+            const io = socketService.getIO();
+            if (io) {
+              io.to(freshGameFinal.lobbyId.toString()).emit('game-over', {
+                leaderboard: finalLeaderboard,
+                gameId: freshGameFinal._id,
+              });
+            }
+          } catch (socketError) {
+            logger.error(
+              `Error broadcasting game-over event: ${socketError.message}`
+            );
+          }
         }
 
         return res.status(200).json({
@@ -323,6 +382,40 @@ const postGuess = async (req, res) => {
             logger.error(
               `Error broadcasting leaderboard update: ${socketError.message}`
             );
+          }
+
+          // After all guess/skip/advance logic, check if all players are finished
+          // (i.e., their currentSongIndex >= game.targetSongs.length)
+          const freshGameFinal = await MultiplayerGame.findById(game._id);
+          const allPlayersFinished = freshGameFinal.playerStates.every(
+            (ps) => ps.currentSongIndex >= freshGameFinal.targetSongs.length
+          );
+          if (allPlayersFinished && freshGameFinal.status !== 'completed') {
+            freshGameFinal.status = 'completed';
+            freshGameFinal.completedAt = new Date();
+            await freshGameFinal.save();
+            // Prepare final leaderboard
+            const finalLeaderboard = freshGameFinal.playerStates
+              .map((ps) => ({
+                userId: ps.userId,
+                email: ps.userEmail,
+                score: ps.score,
+              }))
+              .sort((a, b) => b.score - a.score);
+            // Emit game-over event to all players in the lobby
+            try {
+              const io = socketService.getIO();
+              if (io) {
+                io.to(freshGameFinal.lobbyId.toString()).emit('game-over', {
+                  leaderboard: finalLeaderboard,
+                  gameId: freshGameFinal._id,
+                });
+              }
+            } catch (socketError) {
+              logger.error(
+                `Error broadcasting game-over event: ${socketError.message}`
+              );
+            }
           }
 
           return res.status(200).json({
