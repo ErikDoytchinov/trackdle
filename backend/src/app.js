@@ -9,6 +9,7 @@ const cron = require('node-cron');
 const User = require('./models/userModel');
 const generateDailySong = require('./scheduler/dailySongScheduler');
 const moment = require('moment');
+const expressRateLimit = require('express-rate-limit');
 
 const allowedOrigins = [
   'https://trackdle.doytchinov.eu',
@@ -30,6 +31,17 @@ async function ensureDailySongExists() {
 
 function createApp() {
   const app = express();
+
+  const limiter = expressRateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 100,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+      error: 'Too many requests, please try again later.',
+    },
+  });
+  app.use(limiter);
 
   app.use(
     morgan(':method :url :status :res[content-length] - :response-time ms', {
