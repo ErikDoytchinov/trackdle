@@ -17,9 +17,12 @@ function shuffleArray(array) {
 /**
  * Returns a list of random tracks from the SongPool collection.
  * It uses MongoDB's $sample operator to pick a random set of songs.
+ * @param {number} sampleSize - Number of tracks to sample (default: 1000)
  */
-async function getRandomTracks() {
-  const randomDocs = await SongPool.aggregate([{ $sample: { size: 1000 } }]);
+async function getRandomTracks(sampleSize = 1000) {
+  const randomDocs = await SongPool.aggregate([
+    { $sample: { size: sampleSize } },
+  ]);
   return randomDocs.map((doc) => ({
     name: doc.song.title,
     artist: doc.song.artist,
@@ -115,7 +118,7 @@ async function createSession(mode, playlist_url, req) {
             },
           },
         },
-        { upsert: true, new: true }
+        { upsert: true }
       );
     }
     if (!tracks.length) {

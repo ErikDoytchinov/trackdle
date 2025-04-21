@@ -66,9 +66,7 @@ const joinLobby = async (lobbyId, userId) => {
   const user = await User.findById(userId);
   if (!user) throw new Error('User not found');
 
-  const lobby = await MultiplayerLobby.findOne({
-    $or: [{ _id: lobbyId }, { lobbyCode: lobbyId }],
-  });
+  const lobby = await MultiplayerLobby.findOne({ _id: lobbyId });
 
   if (!lobby) throw new Error('Lobby not found when trying to join it');
   if (lobby.status !== 'waiting')
@@ -191,69 +189,59 @@ async function startGame(lobbyId, userId) {
  * Leave a lobby
  */
 const leaveLobby = async (lobbyId, userId) => {
-  try {
-    const lobby = await MultiplayerLobby.findById(lobbyId);
-    if (!lobby) {
-      logger.info(
-        `Lobby ${lobbyId} not found when user ${userId} tried to leave - it may have been deleted already`
-      );
-      return null;
-    }
-
-    // Check if player is already removed
-    const playerExists = lobby.players.some(
-      (p) => p.userId.toString() === userId.toString()
+  const lobby = await MultiplayerLobby.findById(lobbyId);
+  if (!lobby) {
+    logger.error(
+      `Lobby ${lobbyId} not found when user ${userId} tried to leave - it may have been deleted already`
     );
-    if (!playerExists) {
-      logger.info(`User ${userId} already removed from lobby ${lobbyId}`);
-      return lobby;
-    }
-
-    lobby.players = lobby.players.filter(
-      (p) => p.userId.toString() !== userId.toString()
-    );
-
-    if (lobby.ownerId.toString() === userId.toString()) {
-      if (lobby.players.length > 0) {
-        lobby.ownerId = lobby.players[0].userId;
-        logger.info(
-          `Ownership of lobby ${lobbyId} transferred to ${lobby.ownerId}`
-        );
-      } else {
-        await MultiplayerLobby.findByIdAndDelete(lobbyId);
-        logger.info(`Lobby ${lobbyId} deleted as all players left`);
-        return null;
-      }
-    }
-
-    await lobby.save();
-    logger.info(`User ${userId} left lobby ${lobbyId}`);
-    return lobby;
-  } catch (err) {
-    logger.error(`Error in leaveLobby: ${err.message}`);
-    // Return null instead of throwing to prevent cascading errors
     return null;
   }
+
+  // Check if player is already removed
+  const playerExists = lobby.players.some(
+    (p) => p.userId.toString() === userId.toString()
+  );
+  if (!playerExists) {
+    logger.error(`User ${userId} already removed from lobby ${lobbyId}`);
+    return lobby;
+  }
+
+  lobby.players = lobby.players.filter(
+    (p) => p.userId.toString() !== userId.toString()
+  );
+
+  if (lobby.ownerId.toString() === userId.toString()) {
+    if (lobby.players.length > 0) {
+      lobby.ownerId = lobby.players[0].userId;
+      logger.info(
+        `Ownership of lobby ${lobbyId} transferred to ${lobby.ownerId}`
+      );
+    } else {
+      await MultiplayerLobby.findByIdAndDelete(lobbyId);
+      logger.info(`Lobby ${lobbyId} deleted as all players left`);
+      return null;
+    }
+  }
+
+  await lobby.save();
+  logger.info(`User ${userId} left lobby ${lobbyId}`);
+  return lobby;
 };
 
 /**
  * Handle player disconnect
  */
 const handlePlayerDisconnect = async (userId) => {
-  try {
-    const lobbies = await MultiplayerLobby.find({
-      'players.userId': userId,
-    });
+  const lobbies = await MultiplayerLobby.find({
+    'players.userId': userId,
+  });
 
-    logger.info(
-      `Found ${lobbies.length} lobbies with user ${userId} during disconnect`
-    );
+  logger.info(
+    `Found ${lobbies.length} lobbies with user ${userId} during disconnect`
+  );
 
-    for (const lobby of lobbies) {
-      await leaveLobby(lobby._id, userId);
-    }
-  } catch (err) {
-    logger.error(`Error in handlePlayerDisconnect: ${err.message}`);
+  for (const lobby of lobbies) {
+    await leaveLobby(lobby._id, userId);
   }
 };
 

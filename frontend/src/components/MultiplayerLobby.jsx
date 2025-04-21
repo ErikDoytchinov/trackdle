@@ -153,14 +153,18 @@ const MultiplayerLobby = ({ user, onBack, socket, setGameState }) => {
           gameSettings: response.data.gameSettings
         }));
       }
-      
-      socket.emit('join-lobby', response.data.lobbyId, (error, socketResponse) => {
+
+      const code = response.data.lobbyCode;
+      setCurrentLobby(prev => ({
+        ...(prev || {}),
+        lobbyCode: code,
+      }));
+      socket.emit('join-by-code', code, (error, socketResponse) => {
         if (error) {
           setError(error.message || 'Failed to create lobby');
           setIsJoining(false);
           return;
         }
-        
         if (!socketResponse || !socketResponse.success) {
           setError('Failed to create lobby');
           setIsJoining(false);

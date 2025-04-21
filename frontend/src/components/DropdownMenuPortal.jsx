@@ -1,10 +1,9 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom';
 import PropTypes from 'prop-types';
 
 const DropdownMenuPortal = ({ anchorRef, isOpen, children, className = '' }) => {
   const [styles, setStyles] = useState({});
-  const menuRef = useRef(null);
 
   useEffect(() => {
     if (isOpen && anchorRef.current) {
@@ -22,7 +21,7 @@ const DropdownMenuPortal = ({ anchorRef, isOpen, children, className = '' }) => 
   if (!isOpen) return null;
 
   return ReactDOM.createPortal(
-    <ul ref={menuRef} className={className} style={styles}>
+    <ul className={className} style={styles}>
       {children}
     </ul>,
     document.body

@@ -8,7 +8,6 @@ const mongoose = require('mongoose');
 const cron = require('node-cron');
 const User = require('./models/userModel');
 const generateDailySong = require('./scheduler/dailySongScheduler');
-const DailySong = require('./models/dailySongModel');
 const moment = require('moment');
 
 const allowedOrigins = [
@@ -18,6 +17,7 @@ const allowedOrigins = [
 ];
 
 async function ensureDailySongExists() {
+  const DailySong = require('./models/dailySongModel');
   const today = moment().utc().format('YYYY-MM-DD');
   const existing = await DailySong.findOne({ date: today });
   if (!existing) {
@@ -63,7 +63,7 @@ function createApp() {
         await User.updateMany({}, { canPlayDaily: true });
         logger.info('Daily play flag reset for all users.');
       }
-      
+
       // Both at midnight and noon, ensure daily song exists
       await ensureDailySongExists();
     },
@@ -79,12 +79,14 @@ function createApp() {
     .connect(mongoURI)
     .then(async () => {
       logger.info('MongoDB connected');
-      
-      // Check for today's daily song on server startup
+
+      // check for today's daily song on server startup
       try {
         await ensureDailySongExists();
       } catch (err) {
-        logger.error(`Error ensuring daily song exists on startup: ${err.message}`);
+        logger.error(
+          `Error ensuring daily song exists on startup: ${err.message}`
+        );
       }
     })
     .catch((err) => logger.error('MongoDB connection error:', err));

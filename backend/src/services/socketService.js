@@ -58,43 +58,23 @@ const init = (server) => {
   io.on('connection', (socket) => {
     logger.info(`Socket connected: ${socket.id} - User: ${socket.user.email}`);
 
-    socket.on('join-lobby', async (lobbyId, callback) => {
-      try {
-        for (const room of [...socket.rooms]) {
-          if (room !== socket.id) {
-            await socket.leave(room);
-          }
-        }
-
-        const lobby = await multiplayerService.joinLobby(
-          lobbyId,
-          socket.user._id
-        );
-        await socket.join(lobbyId);
-
-        io.to(lobbyId).emit('lobby-update', {
-          players: lobby.players.map((p) => ({
-            userId: p.userId,
-            email: p.email,
-            ready: p.ready,
-            score: p.score,
-          })),
-          status: lobby.status,
-          ownerId: lobby.ownerId,
-          maxPlayers: lobby.maxPlayers,
-          gameSettings: lobby.gameSettings,
-        });
-
-        callback(null, {
-          success: true,
-          lobbyId: lobby._id.toString(),
-          lobbyCode: lobby.lobbyCode,
-        });
-      } catch (err) {
-        logger.error(`Error joining lobby: ${err.message}`);
-        callback({ success: false, message: err.message });
-      }
-    });
+    const emitLobbyUpdate = (lobby, lobbyIdOverride) => {
+      io.to(lobbyIdOverride || lobby._id.toString()).emit('lobby-update', {
+        players: lobby.players.map((p) => ({
+          userId: p.userId,
+          email: p.email,
+          ready: p.ready,
+          score: p.score,
+        })),
+        status: lobby.status,
+        ownerId: lobby.ownerId,
+        maxPlayers: lobby.maxPlayers,
+        gameSettings: lobby.gameSettings,
+        lobbyCode: (lobbyIdOverride || lobby._id.toString())
+          .slice(-6)
+          .toUpperCase(),
+      });
+    };
 
     socket.on('join-by-code', async (lobbyCode, callback) => {
       try {
@@ -106,11 +86,12 @@ const init = (server) => {
           }
         }
 
-        const allLobbies = await MultiplayerLobby.find({});
-        const lobby = allLobbies.find(
-          (l) =>
-            l._id.toString().slice(-6).toUpperCase() === lobbyCode.toUpperCase()
-        );
+        // find lobby by matching last 6 chars of _id as string
+        const lobbies = await MultiplayerLobby.find({});
+        const lobby = lobbies.find((lobbyDoc) => {
+          const idStr = lobbyDoc._id.toString();
+          return idStr.slice(-6).toUpperCase() === lobbyCode.toUpperCase();
+        });
 
         if (!lobby) {
           logger.error(`Lobby not found for code: ${lobbyCode}`);
@@ -138,19 +119,7 @@ const init = (server) => {
 
         // Emit to all sockets in the room including the sender
         logger.info(`Broadcasting lobby-update to room ${lobbyId}`);
-        io.to(lobbyId).emit('lobby-update', {
-          players: updatedLobby.players.map((p) => ({
-            userId: p.userId,
-            email: p.email,
-            ready: p.ready,
-            score: p.score,
-          })),
-          status: updatedLobby.status,
-          ownerId: updatedLobby.ownerId,
-          maxPlayers: updatedLobby.maxPlayers,
-          gameSettings: updatedLobby.gameSettings,
-          lobbyCode: lobbyId.slice(-6).toUpperCase(),
-        });
+        emitLobbyUpdate(updatedLobby, lobbyId);
 
         callback(null, {
           success: true,
@@ -173,16 +142,7 @@ const init = (server) => {
         await socket.leave(lobbyId);
 
         if (updatedLobby) {
-          io.to(lobbyId).emit('lobby-update', {
-            players: updatedLobby.players.map((p) => ({
-              userId: p.userId,
-              email: p.email,
-              ready: p.ready,
-              score: p.score,
-            })),
-            status: updatedLobby.status,
-            ownerId: updatedLobby.ownerId,
-          });
+          emitLobbyUpdate(updatedLobby, lobbyId);
         }
 
         socket.emit('left-lobby', {
@@ -219,23 +179,11 @@ const init = (server) => {
           `Room ${lobbyIdString} has ${roomMembers.length} members before toggle-ready update`
         );
 
-        io.to(lobbyIdString).emit('lobby-update', {
-          players: lobby.players.map((p) => ({
-            userId: p.userId,
-            email: p.email,
-            ready: p.ready,
-            score: p.score,
-          })),
-          status: lobby.status,
-          ownerId: lobby.ownerId,
-          maxPlayers: lobby.maxPlayers,
-          gameSettings: lobby.gameSettings,
-          lobbyCode: lobbyIdString.slice(-6).toUpperCase(),
-        });
+        emitLobbyUpdate(lobby, lobbyIdString);
 
         // Check if all players are ready
         const allReady = lobby.players.every((p) => p.ready);
-        
+
         // Always emit the ready status - if true, show the button, if false, hide the button
         logger.info(
           `All players ready status in room ${lobbyIdString}: ${allReady ? 'Ready' : 'Not Ready'}`
@@ -269,7 +217,6 @@ const init = (server) => {
   return io;
 };
 
-// get the io instance
 const getIO = () => {
   if (!io) {
     throw new Error('Socket.io not initialized');

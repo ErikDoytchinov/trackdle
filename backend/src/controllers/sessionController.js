@@ -7,6 +7,37 @@ const {
 } = require('../services/sessionService');
 
 /**
+ * Helper for session completion and user stats update
+ */
+async function completeSessionAndRespond({
+  session,
+  req,
+  playtimeSeconds,
+  wonGame,
+  res,
+  songInfo,
+  skip = false,
+}) {
+  if (req.user) {
+    await updateUserStats(
+      req.user._id,
+      session.attempts,
+      playtimeSeconds,
+      wonGame
+    );
+  }
+  session.status = 'completed';
+  await session.save();
+  if (skip) {
+    return res.json({ correct: false, song: songInfo, skipped: true });
+  } else if (!wonGame) {
+    return res.json({ correct: false, song: songInfo, gameOver: true });
+  } else {
+    return res.json({ correct: true, song: songInfo });
+  }
+}
+
+/**
  * POST /session
  * Creates a new session and returns its ID along with the list of tracks.
  */
@@ -74,29 +105,27 @@ async function postGuess(req, res) {
     // Calculate playtime using session.created_at (converted to Date) as the start time.
     const playtimeSeconds = (Date.now() - new Date(session.created_at)) / 1000;
 
+    const songInfo = {
+      name: session.targetSong.title,
+      artist: session.targetSong.artist,
+      album_cover: session.targetSong.album_cover,
+      preview_url: session.targetPreview,
+    };
+
     if (skip) {
       session.attempts += 1;
       session.hintLevel += 1;
       await session.save();
       if (session.attempts >= 5) {
-        const songInfo = {
-          name: session.targetSong.title,
-          artist: session.targetSong.artist,
-          album_cover: session.targetSong.album_cover,
-          preview_url: session.targetPreview,
-        };
-        // Update user stats with wonGame set to false.
-        if (req.user) {
-          await updateUserStats(
-            req.user._id,
-            session.attempts,
-            playtimeSeconds,
-            false
-          );
-        }
-        session.status = 'completed';
-        await session.save();
-        return res.json({ correct: true, song: songInfo, skipped: true });
+        return await completeSessionAndRespond({
+          session,
+          req,
+          playtimeSeconds,
+          wonGame: false,
+          res,
+          songInfo,
+          skip: true,
+        });
       } else {
         return res.json({
           correct: false,
@@ -109,45 +138,26 @@ async function postGuess(req, res) {
       const correctTitle = session.targetSong.title.toLowerCase().trim();
       const userGuess = guess.toLowerCase().trim();
       if (userGuess === correctTitle) {
-        const songInfo = {
-          name: session.targetSong.title,
-          artist: session.targetSong.artist,
-          album_cover: session.targetSong.album_cover,
-          preview_url: session.targetPreview,
-        };
-        // Update user stats with wonGame set to true.
-        if (req.user) {
-          await updateUserStats(
-            req.user._id,
-            session.attempts,
-            playtimeSeconds,
-            true
-          );
-        }
-        session.status = 'completed';
-        await session.save();
-        return res.json({ correct: true, song: songInfo });
+        return await completeSessionAndRespond({
+          session,
+          req,
+          playtimeSeconds,
+          wonGame: true,
+          res,
+          songInfo,
+        });
       } else {
         session.attempts += 1;
         await session.save();
         if (session.attempts >= 5) {
-          const songInfo = {
-            name: session.targetSong.title,
-            artist: session.targetSong.artist,
-            album_cover: session.targetSong.album_cover,
-            preview_url: session.targetPreview,
-          };
-          if (req.user) {
-            await updateUserStats(
-              req.user._id,
-              session.attempts,
-              playtimeSeconds,
-              false
-            );
-          }
-          session.status = 'completed';
-          await session.save();
-          return res.json({ correct: false, song: songInfo, gameOver: true });
+          return await completeSessionAndRespond({
+            session,
+            req,
+            playtimeSeconds,
+            wonGame: false,
+            res,
+            songInfo,
+          });
         }
         return res.json({ correct: false, hintLevel: session.hintLevel });
       }
