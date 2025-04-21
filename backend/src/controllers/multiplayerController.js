@@ -29,7 +29,7 @@ const createLobby = async (req, res) => {
     });
   } catch (err) {
     logger.error(`Error creating lobby: ${err.message}`);
-    res.status(400).json({ success: false, message: err.message });
+    res.status(400).json({ success: false, message: 'Request failed.' });
   }
 };
 
@@ -64,7 +64,7 @@ const getLobby = async (req, res) => {
     });
   } catch (err) {
     logger.error(`Error getting lobby: ${err.message}`);
-    res.status(400).json({ success: false, message: err.message });
+    res.status(400).json({ success: false, message: 'Request failed.' });
   }
 };
 
@@ -112,7 +112,7 @@ const postGameSession = async (req, res) => {
     }
   } catch (err) {
     logger.error(`Error starting game session: ${err.message}`);
-    res.status(400).json({ success: false, message: err.message });
+    res.status(400).json({ success: false, message: 'Request failed.' });
   }
 };
 
@@ -439,7 +439,7 @@ const postGuess = async (req, res) => {
     }
   } catch (err) {
     logger.error(`Error posting guess: ${err.message}`);
-    res.status(400).json({ success: false, message: err.message });
+    res.status(400).json({ success: false, message: 'Request failed.' });
   }
 };
 
@@ -511,7 +511,7 @@ const getNextSong = async (req, res) => {
     });
   } catch (err) {
     logger.error(`Error getting next song: ${err.message}`);
-    res.status(400).json({ success: false, message: err.message });
+    res.status(400).json({ success: false, message: 'Request failed.' });
   }
 };
 

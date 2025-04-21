@@ -55,7 +55,7 @@ async function postSession(req, res) {
     res.json({ session_id: session._id, tracks });
   } catch (err) {
     logger.error(`Error creating session: ${err.message}`);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'An unexpected error occurred.' });
   }
 }
 
@@ -81,7 +81,7 @@ async function getSession(req, res) {
     res.json({ session: sessionObj });
   } catch (err) {
     logger.error(`Error fetching session: ${err.message}`);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'An unexpected error occurred.' });
   }
 }
 
@@ -164,7 +164,7 @@ async function postGuess(req, res) {
     }
   } catch (err) {
     logger.error(`Error processing guess: ${err.message}`);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'An unexpected error occurred.' });
   }
 }
 
@@ -191,7 +191,7 @@ async function postNextTarget(req, res) {
     });
   } catch (err) {
     logger.error(`Error updating session: ${err.message}`);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ err: 'An unexpected error occurred.' });
   }
 }
 

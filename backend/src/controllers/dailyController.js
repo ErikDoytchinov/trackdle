@@ -41,7 +41,7 @@ const getDailyStatus = async (req, res) => {
     });
   } catch (err) {
     logger.error(`Error getting daily status: ${err.message}`);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'An unexpected error occurred.' });
   }
 };
 
