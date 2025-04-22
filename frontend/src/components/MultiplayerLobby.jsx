@@ -18,10 +18,17 @@ const MultiplayerLobby = ({ user, onBack, socket, setGameState }) => {
 
   const apiUrl = import.meta.env.VITE_API_URL;
 
-  // Function to check if the current user is the host
   const isUserHost = () => {
-    return currentLobby && user && currentLobby.ownerId && 
-      (currentLobby.ownerId === user._id || currentLobby.ownerId.toString() === user._id.toString());
+    if (!currentLobby || !user || !currentLobby.ownerId || !user._id) return false;
+    try {
+      return (
+        currentLobby.ownerId === user._id ||
+        (currentLobby.ownerId?.toString && user._id?.toString &&
+          currentLobby.ownerId.toString() === user._id.toString())
+      );
+    } catch {
+      return false;
+    }
   };
 
   const startGame = async () => {

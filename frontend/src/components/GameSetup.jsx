@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 import PropTypes from 'prop-types';
 
@@ -13,36 +13,31 @@ const GameSetup = ({ state, setState, startGame, user }) => {
     return token ? { headers: { Authorization: `Bearer ${token}` } } : {};
   }, []);
 
-  const updateCountdown = (endTime) => {
-    if (countdownInterval.current) {
-      clearInterval(countdownInterval.current);
-    }
-    
-    countdownInterval.current = setInterval(() => {
-      const now = new Date().getTime();
-      const end = new Date(endTime).getTime();
-      const diff = end - now;
-
-      if (diff <= 0) {
+  const checkDailyStatus = useCallback(async () => {
+    const updateCountdown = (endTime) => {
+      if (countdownInterval.current) {
         clearInterval(countdownInterval.current);
-        setCountdown('');
-        checkDailyStatus();
-        return;
       }
-
-      const hours = Math.floor(diff / (1000 * 60 * 60));
-      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-
-      setCountdown(
-        `${hours.toString().padStart(2, '0')}:` +
-        `${minutes.toString().padStart(2, '0')}:` +
-        `${seconds.toString().padStart(2, '0')}`
-      );
-    }, 1000);
-  };
-
-  const checkDailyStatus = async () => {
+      countdownInterval.current = setInterval(() => {
+        const now = new Date().getTime();
+        const end = new Date(endTime).getTime();
+        const diff = end - now;
+        if (diff <= 0) {
+          clearInterval(countdownInterval.current);
+          setCountdown('');
+          checkDailyStatus();
+          return;
+        }
+        const hours = Math.floor(diff / (1000 * 60 * 60));
+        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+        setCountdown(
+          `${hours.toString().padStart(2, '0')}:` +
+          `${minutes.toString().padStart(2, '0')}:` +
+          `${seconds.toString().padStart(2, '0')}`
+        );
+      }, 1000);
+    };
     try {
       setIsLoading(true);
       const response = await axios.get(
@@ -50,7 +45,6 @@ const GameSetup = ({ state, setState, startGame, user }) => {
         getAuthConfig()
       );
       setDailyStatus(response.data);
-      
       if (!response.data.available && response.data.next_available_at) {
         updateCountdown(response.data.next_available_at);
       } else {
@@ -61,7 +55,7 @@ const GameSetup = ({ state, setState, startGame, user }) => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [getAuthConfig]);
 
   useEffect(() => {
     checkDailyStatus();
@@ -71,25 +65,10 @@ const GameSetup = ({ state, setState, startGame, user }) => {
         clearInterval(countdownInterval.current);
       }
     };
-  }, []);
+  }, [checkDailyStatus]);
 
-  useEffect(() => {
-    checkDailyStatus(); 
-  }, [user]);
-
-  // Handler for mode selection that prevents daily selection when not available
   const handleModeSelection = (mode) => {
-    // Don't allow selection of daily mode if it's not available
-    if (mode === 'daily' && !dailyStatus?.available) {
-      return;
-    }
-    
-    // Don't allow selection of multiplayer if no user
-    if (mode === 'multiplayer' && !user) {
-      return;
-    }
-    
-    setState(prev => ({ ...prev, mode }));
+    setState((prev) => ({ ...prev, mode }));
   };
 
   return (

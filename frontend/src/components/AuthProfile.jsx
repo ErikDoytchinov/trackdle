@@ -1,6 +1,6 @@
-// AuthProfile.jsx
 import { useState } from 'react';
 import axios from 'axios';
+import PropTypes from 'prop-types';
 
 const AuthProfile = ({ user, setUser, onClose, stats }) => {
   const [mode, setMode] = useState('login');
@@ -141,6 +141,18 @@ const AuthProfile = ({ user, setUser, onClose, stats }) => {
       </div>
     </div>
   );
+};
+AuthProfile.propTypes = {
+  user: PropTypes.object,
+  setUser: PropTypes.func,
+  onClose: PropTypes.func,
+  stats: PropTypes.shape({
+    gamesPlayed: PropTypes.number,
+    correctGuesses: PropTypes.number,
+    averageAttempts: PropTypes.number,
+    winRate: PropTypes.number,
+    totalPlaytime: PropTypes.number,
+  }).isRequired,
 };
 
 export default AuthProfile;
