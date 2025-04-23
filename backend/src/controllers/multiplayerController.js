@@ -9,9 +9,8 @@ const MultiplayerGame = require('../models/multiplayerGameModel');
  */
 const createLobby = async (req, res) => {
   try {
-    const { maxPlayers, songCount, maxAttempts } = req.body;
+    const { songCount, maxAttempts } = req.body;
     const settings = {
-      maxPlayers: maxPlayers || 4,
       songCount: songCount || 5,
       maxAttempts: maxAttempts || 5,
     };
@@ -24,7 +23,6 @@ const createLobby = async (req, res) => {
       lobbyCode: lobby._id.toString().slice(-6).toUpperCase(), // Short code for easy sharing
       ownerId: lobby.ownerId,
       players: lobby.players,
-      maxPlayers: lobby.maxPlayers,
       gameSettings: lobby.gameSettings,
     });
   } catch (err) {
@@ -56,7 +54,6 @@ const getLobby = async (req, res) => {
         lobbyCode: lobby._id.toString().slice(-6).toUpperCase(),
         status: lobby.status,
         players: formattedPlayers,
-        maxPlayers: lobby.maxPlayers,
         ownerId: lobby.ownerId,
         gameSettings: lobby.gameSettings,
         activeGameId: lobby.activeGameId,

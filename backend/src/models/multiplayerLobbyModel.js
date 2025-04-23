@@ -19,10 +19,6 @@ const multiplayerLobbySchema = new mongoose.Schema({
     enum: ['waiting', 'in-game', 'completed'],
     default: 'waiting',
   },
-  maxPlayers: {
-    type: Number,
-    default: 4,
-  },
   gameSettings: {
     songCount: { type: Number, default: 5 },
     maxAttempts: { type: Number, default: 5 },

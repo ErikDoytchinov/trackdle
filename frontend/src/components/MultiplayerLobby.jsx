@@ -7,7 +7,6 @@ const MultiplayerLobby = ({ user, onBack, socket, setGameState }) => {
   const [currentLobby, setCurrentLobby] = useState(null);
   const [lobbyCode, setLobbyCode] = useState('');
   const [lobbySettings, setLobbySettings] = useState({
-    maxPlayers: 4,
     songCount: 5,
     maxAttempts: 5
   });
@@ -83,7 +82,6 @@ const MultiplayerLobby = ({ user, onBack, socket, setGameState }) => {
           lobbyId: data.lobbyId,
         };
         
-        if (data.maxPlayers) updated.maxPlayers = data.maxPlayers;
         if (data.gameSettings) updated.gameSettings = data.gameSettings;
         
         // Preserve the lobby code and lobby id from the API if not provided by the socket event
@@ -156,7 +154,6 @@ const MultiplayerLobby = ({ user, onBack, socket, setGameState }) => {
           ...(prev || {}),
           lobbyCode: response.data.lobbyCode,
           lobbyId: response.data.lobbyId,
-          maxPlayers: response.data.maxPlayers,
           gameSettings: response.data.gameSettings
         }));
       }
@@ -306,7 +303,6 @@ const MultiplayerLobby = ({ user, onBack, socket, setGameState }) => {
             <div className="space-y-6">
               <div className="grid grid-cols-2 gap-5">
                 {[
-                  { label: 'Max Players', key: 'maxPlayers', options: [2, 3, 4, 5, 6] },
                   { label: 'Song Count', key: 'songCount', options: [3, 5, 7, 10] },
                   { label: 'Max Attempts', key: 'maxAttempts', options: [3, 5, 6] }
                 ].map((setting) => (
@@ -357,7 +353,7 @@ const MultiplayerLobby = ({ user, onBack, socket, setGameState }) => {
             <div>
               <h2 className="text-2xl font-bold text-amber-400">Lobby Code: {currentLobby.lobbyCode}</h2>
               <p className="text-sm text-gray-400 mt-2">
-                {currentLobby.players?.length || 0}/{currentLobby.maxPlayers} Players
+                {currentLobby.players?.length || 0} Player(s)
               </p>
             </div>
             <button

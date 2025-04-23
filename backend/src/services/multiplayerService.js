@@ -25,7 +25,6 @@ const createLobby = async (userId, settings = {}) => {
       },
     ],
     status: 'waiting',
-    maxPlayers: settings.maxPlayers || 4,
     gameSettings: {
       songCount: settings.songCount || 5,
       maxAttempts: settings.maxAttempts || 5,

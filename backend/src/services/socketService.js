@@ -68,7 +68,6 @@ const init = (server) => {
         })),
         status: lobby.status,
         ownerId: lobby.ownerId,
-        maxPlayers: lobby.maxPlayers,
         gameSettings: lobby.gameSettings,
         lobbyCode: (lobbyIdOverride || lobby._id.toString())
           .slice(-6)
