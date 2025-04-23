@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import axios from 'axios';
+import axios, { HttpStatusCode } from 'axios';
 import PropTypes from 'prop-types';
 
 const AuthProfile = ({ user, setUser, onClose, stats }) => {
@@ -16,9 +16,12 @@ const AuthProfile = ({ user, setUser, onClose, stats }) => {
         `${import.meta.env.VITE_API_URL}/auth/${endpoint}`,
         { email, password }
       );
-      
+      if(response.status != HttpStatusCode.Ok) {
+        throw response
+      }
+
       localStorage.setItem('token', response.data.token);
-      setUser(response.data.user);
+      setUser({});
       onClose();
     } catch (err) {
       setError(err.response?.data?.message || 'Authentication failed');

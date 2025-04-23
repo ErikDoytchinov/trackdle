@@ -61,6 +61,68 @@ const App = () => {
   const maxAttempts = 5;
   const snippetProgress = useAudioProgress(audioRef, progressBarRef);
 
+  const [dailyStatus, setDailyStatus] = useState(null);
+  const [dailyCountdown, setDailyCountdown] = useState('');
+  const dailyCountdownInterval = useRef(null);
+  
+  defineDailyStatusFetcher();
+
+  function defineDailyStatusFetcher() {
+    const formatCountdown = (secs) => {
+      const hours = Math.floor(secs / 3600);
+      const minutes = Math.floor((secs % 3600) / 60);
+      const seconds = secs % 60;
+      return (
+        hours.toString().padStart(2, '0') + ':' +
+        minutes.toString().padStart(2, '0') + ':' +
+        seconds.toString().padStart(2, '0')
+      );
+    };
+
+    // fetch daily status and set countdown
+    const fetchDailyStatus = async () => {
+      try {
+        const response = await axios.get(
+          `${import.meta.env.VITE_API_URL}/user/status`,
+          getAuthConfig()
+        );
+        setDailyStatus(response.data);
+        if (!response.data.available && typeof response.data.seconds_until_next === 'number') {
+          let secondsLeft = response.data.seconds_until_next;
+          setDailyCountdown(formatCountdown(secondsLeft));
+          if (dailyCountdownInterval.current) clearInterval(dailyCountdownInterval.current);
+          dailyCountdownInterval.current = setInterval(() => {
+            secondsLeft -= 1;
+            if (secondsLeft <= 0) {
+              clearInterval(dailyCountdownInterval.current);
+              setDailyCountdown('');
+              fetchDailyStatus(); // Refetch when timer hits zero
+            } else {
+              setDailyCountdown(formatCountdown(secondsLeft));
+            }
+          }, 1000);
+        } else {
+          setDailyCountdown('');
+          if (dailyCountdownInterval.current) clearInterval(dailyCountdownInterval.current);
+        }
+      } catch (error) {
+        setDailyStatus(null);
+        setDailyCountdown('');
+      }
+    };
+
+    // Initial fetch and on user change
+    useEffect(() => {
+      fetchDailyStatus();
+      return () => {
+        if (dailyCountdownInterval.current) clearInterval(dailyCountdownInterval.current);
+      };
+    }, [user]);
+
+    // Expose refresh function
+    App.refreshDailyStatus = fetchDailyStatus;
+  }
+
   const playSnippet = useCallback(
     (duration) => {
       if (!audioRef.current || !progressBarRef.current) return;
@@ -995,7 +1057,15 @@ const App = () => {
         </h1>
   
         {!state.gameStarted ? (
-          <GameSetup state={state} setState={setState} startGame={startGame} user={user} />
+          <GameSetup 
+            state={state} 
+            setState={setState} 
+            startGame={startGame} 
+            user={user}
+            dailyStatus={dailyStatus}
+            dailyCountdown={dailyCountdown}
+            refreshDailyStatus={App.refreshDailyStatus}
+          />
         ) : mpState.inLobby ? (
           <MultiplayerLobby 
             user={user}

@@ -1,79 +1,18 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import axios from 'axios';
+import { useEffect } from 'react';
 import PropTypes from 'prop-types';
 
-const GameSetup = ({ state, setState, startGame, user }) => {
-  const [dailyStatus, setDailyStatus] = useState(null);
-  const [countdown, setCountdown] = useState('');
-  const [isLoading, setIsLoading] = useState(true);
-  const countdownInterval = useRef(null);
-
-  const getAuthConfig = useCallback(() => {
-    const token = localStorage.getItem('token');
-    return token ? { headers: { Authorization: `Bearer ${token}` } } : {};
-  }, []);
-
-  const checkDailyStatus = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      const response = await axios.get(
-        `${import.meta.env.VITE_API_URL}/user/status`,
-        getAuthConfig()
-      );
-      setDailyStatus(response.data);
-      if (!response.data.available && typeof response.data.seconds_until_next === 'number') {
-        let secondsLeft = response.data.seconds_until_next;
-        const formatCountdown = (secs) => {
-          const hours = Math.floor(secs / 3600);
-          const minutes = Math.floor((secs % 3600) / 60);
-          const seconds = secs % 60;
-          return (
-            hours.toString().padStart(2, '0') + ':' +
-            minutes.toString().padStart(2, '0') + ':' +
-            seconds.toString().padStart(2, '0')
-          );
-        };
-        setCountdown(formatCountdown(secondsLeft));
-        if (countdownInterval.current) clearInterval(countdownInterval.current);
-        countdownInterval.current = setInterval(() => {
-          secondsLeft -= 1;
-          if (secondsLeft <= 0) {
-            clearInterval(countdownInterval.current);
-            setCountdown('');
-            checkDailyStatus();
-          } else {
-            setCountdown(formatCountdown(secondsLeft));
-          }
-        }, 1000);
-      } else {
-        setCountdown('');
-      }
-    } catch (error) {
-      console.error('Error checking daily status:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [getAuthConfig]);
-
-  useEffect(() => {
-    checkDailyStatus();
-
-    return () => {
-      if (countdownInterval.current) {
-        clearInterval(countdownInterval.current);
-      }
-    };
-  }, [checkDailyStatus]);
-
-  // re-check daily status whenever user logs in or out
-  useEffect(() => {
-    checkDailyStatus();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+const GameSetup = ({ state, setState, startGame, user, dailyStatus, dailyCountdown, refreshDailyStatus }) => {
+  const isLoading = dailyStatus === null && state.mode === 'daily';
 
   const handleModeSelection = (mode) => {
     setState((prev) => ({ ...prev, mode }));
   };
+
+  useEffect(() => {
+    if (state.mode === 'daily' && dailyCountdown === '' && refreshDailyStatus) {
+      refreshDailyStatus();
+    }
+  }, [state.mode, dailyCountdown, refreshDailyStatus]);
 
   return (
     <div className="space-y-8">
@@ -123,19 +62,16 @@ const GameSetup = ({ state, setState, startGame, user }) => {
                       : mode.charAt(0).toUpperCase() + mode.slice(1)}
                   </span>
                 </button>
-                
-                {/* Timer overlay for daily mode */}
-                {mode === 'daily' && !dailyStatus?.available && countdown && (
+                {mode === 'daily' && !dailyStatus?.available && dailyCountdown && (
                   <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 rounded-xl z-10">
                     <span className="text-xs text-amber-300 mb-1">Available in</span>
-                    <span className="text-amber-400 font-mono font-bold">{countdown}</span>
+                    <span className="text-amber-400 font-mono font-bold">{dailyCountdown}</span>
                   </div>
                 )}
               </div>
             ))}
           </div>
         </div>
-  
         {state.mode === 'playlist' && (
           <div className="space-y-4">
             <input
@@ -150,13 +86,11 @@ const GameSetup = ({ state, setState, startGame, user }) => {
             </p>
           </div>
         )}
-        
         {state.mode === 'multiplayer' && !user && (
           <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 text-sm text-amber-400">
             You need to sign in to play multiplayer games.
           </div>
         )}
-  
         <button
           onClick={startGame}
           disabled={(state.mode === 'daily' && !dailyStatus?.available) || isLoading}
@@ -184,7 +118,10 @@ GameSetup.propTypes = {
   state: PropTypes.object.isRequired, 
   setState: PropTypes.func.isRequired,
   startGame: PropTypes.func.isRequired,
-  user: PropTypes.object
+  user: PropTypes.object,
+  dailyStatus: PropTypes.object,
+  dailyCountdown: PropTypes.string,
+  refreshDailyStatus: PropTypes.func
 };
 
 export default GameSetup;
