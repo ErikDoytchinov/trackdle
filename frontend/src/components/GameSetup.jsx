@@ -14,39 +14,37 @@ const GameSetup = ({ state, setState, startGame, user }) => {
   }, []);
 
   const checkDailyStatus = useCallback(async () => {
-    const updateCountdown = (endTime) => {
-      if (countdownInterval.current) {
-        clearInterval(countdownInterval.current);
-      }
-      countdownInterval.current = setInterval(() => {
-        const now = new Date().getTime();
-        const end = new Date(endTime).getTime();
-        const diff = end - now;
-        if (diff <= 0) {
-          clearInterval(countdownInterval.current);
-          setCountdown('');
-          checkDailyStatus();
-          return;
-        }
-        const hours = Math.floor(diff / (1000 * 60 * 60));
-        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-        const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-        setCountdown(
-          `${hours.toString().padStart(2, '0')}:` +
-          `${minutes.toString().padStart(2, '0')}:` +
-          `${seconds.toString().padStart(2, '0')}`
-        );
-      }, 1000);
-    };
     try {
       setIsLoading(true);
       const response = await axios.get(
-        `${import.meta.env.VITE_API_URL}/daily/status`,
+        `${import.meta.env.VITE_API_URL}/user/status`,
         getAuthConfig()
       );
       setDailyStatus(response.data);
-      if (!response.data.available && response.data.next_available_at) {
-        updateCountdown(response.data.next_available_at);
+      if (!response.data.available && typeof response.data.seconds_until_next === 'number') {
+        let secondsLeft = response.data.seconds_until_next;
+        const formatCountdown = (secs) => {
+          const hours = Math.floor(secs / 3600);
+          const minutes = Math.floor((secs % 3600) / 60);
+          const seconds = secs % 60;
+          return (
+            hours.toString().padStart(2, '0') + ':' +
+            minutes.toString().padStart(2, '0') + ':' +
+            seconds.toString().padStart(2, '0')
+          );
+        };
+        setCountdown(formatCountdown(secondsLeft));
+        if (countdownInterval.current) clearInterval(countdownInterval.current);
+        countdownInterval.current = setInterval(() => {
+          secondsLeft -= 1;
+          if (secondsLeft <= 0) {
+            clearInterval(countdownInterval.current);
+            setCountdown('');
+            checkDailyStatus();
+          } else {
+            setCountdown(formatCountdown(secondsLeft));
+          }
+        }, 1000);
       } else {
         setCountdown('');
       }
@@ -66,6 +64,12 @@ const GameSetup = ({ state, setState, startGame, user }) => {
       }
     };
   }, [checkDailyStatus]);
+
+  // re-check daily status whenever user logs in or out
+  useEffect(() => {
+    checkDailyStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
   const handleModeSelection = (mode) => {
     setState((prev) => ({ ...prev, mode }));
