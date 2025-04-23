@@ -7,7 +7,7 @@ const generateToken = (user) => {
   });
 };
 
-exports.signup = async (req, res) => {
+const signup = async (req, res) => {
   try {
     const { email, password } = req.body;
     const existingUser = await User.findOne({ email });
@@ -24,19 +24,13 @@ exports.signup = async (req, res) => {
     const token = generateToken(user);
     res.json({
       token,
-      user: {
-        email: user.email,
-        gamesPlayed: user.gamesPlayed,
-        correctGuesses: user.correctGuesses,
-        averageAttempts: user.averageAttempts,
-      },
     });
   } catch (err) {
     res.status(500).json({ message: 'An unexpected error occurred.' });
   }
 };
 
-exports.login = async (req, res) => {
+const login = async (req, res) => {
   try {
     const { email, password } = req.body;
     const user = await User.findOne({ email });
@@ -50,19 +44,13 @@ exports.login = async (req, res) => {
     const token = generateToken(user);
     res.json({
       token,
-      user: {
-        email: user.email,
-        gamesPlayed: user.gamesPlayed,
-        correctGuesses: user.correctGuesses,
-        averageAttempts: user.averageAttempts,
-      },
     });
   } catch (err) {
     res.status(500).json({ message: 'An unexpected error occurred.' });
   }
 };
 
-exports.getMe = async (req, res) => {
+const getMe = async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
     if (!user) {
@@ -72,12 +60,15 @@ exports.getMe = async (req, res) => {
       user: {
         _id: user._id,
         email: user.email,
-        gamesPlayed: user.gamesPlayed,
-        correctGuesses: user.correctGuesses,
-        averageAttempts: user.averageAttempts,
       },
     });
   } catch (err) {
     res.status(500).json({ message: 'An unexpected error occurred.' });
   }
+};
+
+module.exports = {
+  signup,
+  login,
+  getMe,
 };
