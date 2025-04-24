@@ -45,6 +45,7 @@ function createApp() {
 
   app.use(
     morgan(':method :url :status :res[content-length] - :response-time ms', {
+      skip: (req) => req.method === 'OPTIONS',
       stream: {
         write: (message) => logger.info(message.trim()),
       },

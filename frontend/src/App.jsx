@@ -81,6 +81,9 @@ const App = () => {
 
     // fetch daily status and set countdown
     const fetchDailyStatus = async () => {
+      if (fetchDailyStatus.isRunning) return;
+      fetchDailyStatus.isRunning = true;
+
       try {
         const response = await axios.get(
           `${import.meta.env.VITE_API_URL}/user/status`,
@@ -91,6 +94,7 @@ const App = () => {
           let secondsLeft = response.data.seconds_until_next;
           setDailyCountdown(formatCountdown(secondsLeft));
           if (dailyCountdownInterval.current) clearInterval(dailyCountdownInterval.current);
+          
           dailyCountdownInterval.current = setInterval(() => {
             secondsLeft -= 1;
             if (secondsLeft <= 0) {
@@ -108,18 +112,20 @@ const App = () => {
       } catch (error) {
         setDailyStatus(null);
         setDailyCountdown('');
+      } finally {
+        fetchDailyStatus.isRunning = false;
       }
     };
 
-    // Initial fetch and on user change
     useEffect(() => {
-      fetchDailyStatus();
+      // Add a slight delay to avoid firing this effect immediately after the main useEffect
+      const timeoutId = setTimeout(fetchDailyStatus, 100);
       return () => {
+        clearTimeout(timeoutId);
         if (dailyCountdownInterval.current) clearInterval(dailyCountdownInterval.current);
       };
     }, [user]);
 
-    // Expose refresh function
     App.refreshDailyStatus = fetchDailyStatus;
   }
 
@@ -349,6 +355,9 @@ const App = () => {
 
   useEffect(() => {
     const fetchUserAndStats = async () => {
+      if (fetchUserAndStats.isRunning) return;
+      fetchUserAndStats.isRunning = true;
+      
       const token = localStorage.getItem('token');
       if (token) {
         try {
@@ -364,9 +373,14 @@ const App = () => {
           setStats(statsResponse.data);
         } catch {
           localStorage.removeItem('token');
+        } finally {
+          fetchUserAndStats.isRunning = false;
         }
+      } else {
+        fetchUserAndStats.isRunning = false;
       }
     };
+    
     fetchUserAndStats();
   }, [getAuthConfig]);
 
@@ -382,7 +396,6 @@ const App = () => {
     }
   };
 
-  // Filter suggestions based on the current input value
   const filteredSongs = useMemo(() => {
     if (!inputValue) return [];
     return state.recommendedSongs.filter((song) =>
@@ -396,7 +409,6 @@ const App = () => {
     }
   }, [volume]);
 
-  // Add global escape key handler
   useEffect(() => {
     const handleEscapeKey = (e) => {
       if (e.key === 'Escape') {
@@ -472,7 +484,6 @@ const App = () => {
       }));
       setInputValue('');
       
-      // Add a small delay to ensure the audio element is updated
       setTimeout(() => {
         if (audioRef.current) {
           audioRef.current.volume = volume;

@@ -1,16 +1,21 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import PropTypes from 'prop-types';
 
 const GameSetup = ({ state, setState, startGame, user, dailyStatus, dailyCountdown, refreshDailyStatus }) => {
   const isLoading = dailyStatus === null && state.mode === 'daily';
+  const refreshRequested = useRef(false);
 
   const handleModeSelection = (mode) => {
     setState((prev) => ({ ...prev, mode }));
   };
 
   useEffect(() => {
-    if (state.mode === 'daily' && dailyCountdown === '' && refreshDailyStatus) {
-      refreshDailyStatus();
+    if (state.mode === 'daily' && dailyCountdown === '' && refreshDailyStatus && !refreshRequested.current) {
+      refreshRequested.current = true;
+      setTimeout(() => {
+        refreshDailyStatus();
+        refreshRequested.current = false;
+      }, 100);
     }
   }, [state.mode, dailyCountdown, refreshDailyStatus]);
 
