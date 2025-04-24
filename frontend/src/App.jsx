@@ -11,6 +11,7 @@ import { io } from 'socket.io-client';
 import PropTypes from 'prop-types';
 import DropdownMenuPortal from './components/DropdownMenuPortal';
 import Leaderboard from './components/Leaderboard';
+import { formatDuration, intervalToDuration } from 'date-fns';
 
 const App = () => {
   const [state, setState] = useState({
@@ -69,14 +70,9 @@ const App = () => {
 
   function defineDailyStatusFetcher() {
     const formatCountdown = (secs) => {
-      const hours = Math.floor(secs / 3600);
-      const minutes = Math.floor((secs % 3600) / 60);
-      const seconds = secs % 60;
-      return (
-        hours.toString().padStart(2, '0') + ':' +
-        minutes.toString().padStart(2, '0') + ':' +
-        seconds.toString().padStart(2, '0')
-      );
+      const duration = intervalToDuration({ start: 0, end: secs * 1000 });
+      const pad = (n) => String(n).padStart(2, '0');
+      return [pad(duration.hours), pad(duration.minutes), pad(duration.seconds)].join(':');
     };
 
     // fetch daily status and set countdown
@@ -1253,7 +1249,7 @@ const App = () => {
                             <DropdownMenuPortal
                               anchorRef={inputAnchorRef}
                               isOpen={isOpen && filteredSongs.length > 0}
-                              className="bg-gray-800/90 rounded-xl overflow-hidden shadow-lg max-h-40 md:max-h-48 overflow-y-auto backdrop-blur-lg border border-white/10"
+                              className="bg-gray-800/90 rounded-xl overflow-hidden shadow-lg max-h-40 md:max-h-48 overflow-y-auto backdrop-blur-lg border border-white/10 min-w-full w-full"
                             >
                               {filteredSongs.map((song, index) => (
                                 <li
