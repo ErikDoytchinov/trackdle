@@ -33,8 +33,8 @@ function createApp() {
   const app = express();
 
   const limiter = expressRateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 100,
+    windowMs: 5 * 60 * 1000,
+    max: 1500,
     standardHeaders: true,
     legacyHeaders: false,
     message: {
