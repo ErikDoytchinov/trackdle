@@ -65,6 +65,7 @@ const App = () => {
   const [dailyStatus, setDailyStatus] = useState(null);
   const [dailyCountdown, setDailyCountdown] = useState('');
   const dailyCountdownInterval = useRef(null);
+  const lastMode = useRef(null);
   
   defineDailyStatusFetcher();
 
@@ -149,7 +150,8 @@ const App = () => {
   }, []);
 
   useEffect(() => {
-    if (user && !socket && state.mode === 'multiplayer') {
+    // Only create a socket when switching into multiplayer mode from another mode
+    if (user && state.mode === 'multiplayer' && lastMode.current !== 'multiplayer' && !socket) {
       const apiUrl = import.meta.env.VITE_API_URL;
             
       const newSocket = io(apiUrl, {
@@ -329,25 +331,10 @@ const App = () => {
       setSocket(newSocket);
     }
     
-    return () => {
-      if (socket) {
-                if (socket.heartbeatInterval) {
-          clearInterval(socket.heartbeatInterval);
-        }
-      
-        socket.off('connect');
-        socket.off('disconnect');
-        socket.off('connect_error');
-        socket.off('reconnect');
-        socket.off('reconnect_error');
-        socket.off('reconnect_failed');
-        socket.off('error');
-        
-        socket.disconnect();
-        setSocket(null);
-      }
-    };
-  }, [user, state.mode, socket, playSnippet, volume]);
+    lastMode.current = state.mode;
+
+    // Removed automatic cleanup to prevent unintended disconnection (e.g., React StrictMode mount/unmount)
+  }, [user, state.mode, playSnippet, volume]);
 
   useEffect(() => {
     const fetchUserAndStats = async () => {
